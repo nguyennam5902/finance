@@ -1,7 +1,18 @@
+/** Quotes:
+ * Apple Inc. (AAPL)
+ * Amazon.com Inc. (AMZN)
+ * Microsoft Corporation (MSFT)
+ * Alphabet Inc. (GOOGL)
+ * Tesla Inc. (TSLA)
+ * Facebook Inc. (FB)
+ * Johnson & Johnson (JNJ)
+ * Procter & Gamble Co. (PG)
+ * Visa Inc. (V)
+ * JPMorgan Chase & Co. (JPM)
+ */
+
 // Build Node
 const express = require('express'), fs = require('fs'), app = express();
-const ejs = require('ejs');
-const res = require('express/lib/response');
 const { MongoClient } = require('mongodb');
 const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net/');
 client.connect();
@@ -18,14 +29,10 @@ async function checkAccount(username, password, isNeedCheckPassword) {
     try {
         const collection = client.db('finance').collection('accounts');
         var aggregation;
-        if (isNeedCheckPassword) {
+        if (isNeedCheckPassword)
             aggregation = [{ $match: { 'username': username, 'password': password } }, { $count: 'result' }];
-        } else {
-            aggregation = [{ $match: { 'username': username } }, { $count: 'result' }];
-        }
-        const a = collection.aggregate(aggregation).toArray();
-        const length = (await a).length;
-        console.log(length);
+        else aggregation = [{ $match: { 'username': username } }, { $count: 'result' }];
+        const length = (await collection.aggregate(aggregation).toArray()).length;
         return (length != 0);
     } catch (err) {
         console.error(err);
@@ -36,17 +43,22 @@ app.use(express.urlencoded({ extended: true }));
 app.set('view engine', 'ejs');
 app.set('views', 'templates');
 
-const apiKey = 'INSERT_YOUR_API_KEY_HERE';
-const symbol = 'GOOGL';
+const apiKey = 'SOK4MJ8AY4RK33W3';
+const isLogin = false;
 
 // Get stocks price
-// fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`)
-//     .then(response => response.json())
-//     .then(data => {
-//         const price = data['Global Quote']['05. price'];
-//         console.log(`The real-time price of ${symbol} is ${price}`);
-//     })
-//     .catch(error => console.error(error));
+async function lookup(quote) {
+    fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${quote}&apikey=${apiKey}`)
+        .then(response => response.json())
+        .then(data => {
+            const quote_name = data['Global Quote']['01. symbol'];
+            const price = data['Global Quote']['05. price'];
+            console.log(`${quote_name} -> ${price}`)
+            return price;
+        })
+        .catch(error => console.error(error));
+}
+
 
 function escape(s) {
     const replacements = [["-", "--"], [" ", "-"], ["_", "__"], ["?", "~q"], ["%", "~p"], ["#", "~h"], ["/", "~s"], ["\"", "''"]];
@@ -59,7 +71,7 @@ function apologyRender(res, top, bottom) {
     bottom = escape(bottom);
     res.render('apology', {
         main: '<img alt="' + top + '" class="border" src="http://memegen.link/custom/' + top + '/' + bottom + '.jpg?alt=https://i.imgur.com/CsCgN7Ll.png" title=' + bottom + '>',
-        top: top, bottom: bottom
+        isLogin: isLogin, top: top, bottom: bottom
     });
 }
 
@@ -67,19 +79,15 @@ function apologyRender(res, top, bottom) {
 app.set('port', process.env.PORT || 3000);
 
 // Build path 
-app.get('/login', function (req, res) {
-    res.render('login');
-});
-app.get('/layout', (_req, res) => {
-    res.render('layout');
+app.get('/login', function (_req, res) {
+    res.render('login', { isLogin: isLogin });
 });
 app.get('apology', (_req, res) => {
     res.render('apology');
 });
 
 app.post('/login', (req, res) => {
-    const username = req.body.username;
-    const password = req.body.password;
+    const username = req.body.username, password = req.body.password;
     if (isBlank(username))
         apologyRender(res, 403, 'must provide username');
     else if (isBlank(password))
@@ -87,18 +95,43 @@ app.post('/login', (req, res) => {
     // console.log(`username: ${username}, password: ${password}`);
     checkAccount(username, password, true).then(isValid => {
         if (isValid == true) {
-            res.send('Succeed');
+            app.set('username', username);
+            res.redirect('/');
         } else {
             apologyRender(res, 403, 'invalid username and/or password');
         }
     });
 });
-
-app.get('/', (_req, res) => {
-    res.render('login');
+app.get('/logout', (_req, res) => {
+    app.set('username', null);
+    res.redirect('/login');
 });
+app.get('/', (_req, res) => {
+    if (typeof app.get('username') === "undefined") {
+        res.redirect('login');
+    } else {
+        res.render('index', { isLogin: true });
+    }
+});
+app.get('/quote', (_req, res) => {
+    if (typeof app.get('username') === "undefined") {
+        res.redirect('login');
+    } else {
+        res.render('quote');
+    }
+});
+app.post('/quote', (_req, res) => {
+    const quote = _req.body.symbol;
+    if (isBlank(quote)) {
+        apologyRender(res, 400, 'Quote does not exist');
+    } else {
+        lookup(quote).then(price => {
+            res.render('quoted', { main: `<p>A share of ${quote} costs ${price}.</p>` });
+        });
+    }
+})
 app.get('/register', (_req, res) => {
-    res.render('register');
+    res.render('register', { isLogin: isLogin });
 });
 app.post('/register', (req, res) => {
     const username = req.body.username;
