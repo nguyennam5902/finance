@@ -14,12 +14,18 @@ function isBlank(str) {
  * @param password
  * @returns bool: True if the account exists and otherwise
  */
-async function checkAccount(username, password) {
+async function checkAccount(username, password, isNeedCheckPassword) {
     try {
         const collection = client.db('finance').collection('accounts');
-        const aggregation = [{ $match: { 'username': username, 'password': password } }, { $count: 'result' }];
+        var aggregation;
+        if (isNeedCheckPassword) {
+            aggregation = [{ $match: { 'username': username, 'password': password } }, { $count: 'result' }];
+        } else {
+            aggregation = [{ $match: { 'username': username } }, { $count: 'result' }];
+        }
         const a = collection.aggregate(aggregation).toArray();
         const length = (await a).length;
+        console.log(length);
         return (length != 0);
     } catch (err) {
         console.error(err);
@@ -42,20 +48,6 @@ const symbol = 'GOOGL';
 //     })
 //     .catch(error => console.error(error));
 
-
-// Set port
-app.set('port', process.env.PORT || 3000);
-
-// Build path 
-app.get('/login', function (req, res) {
-    res.render('login');
-});
-app.get('/layout', (_req, res) => {
-    res.render('layout');
-});
-app.get('apology', (_req, res) => {
-    res.render('apology');
-});
 function escape(s) {
     const replacements = [["-", "--"], [" ", "-"], ["_", "__"], ["?", "~q"], ["%", "~p"], ["#", "~h"], ["/", "~s"], ["\"", "''"]];
     for (var i = 0; i < replacements.length; i++)
@@ -71,6 +63,20 @@ function apologyRender(res, top, bottom) {
     });
 }
 
+// Set port
+app.set('port', process.env.PORT || 3000);
+
+// Build path 
+app.get('/login', function (req, res) {
+    res.render('login');
+});
+app.get('/layout', (_req, res) => {
+    res.render('layout');
+});
+app.get('apology', (_req, res) => {
+    res.render('apology');
+});
+
 app.post('/login', (req, res) => {
     const username = req.body.username;
     const password = req.body.password;
@@ -79,9 +85,9 @@ app.post('/login', (req, res) => {
     else if (isBlank(password))
         apologyRender(res, 403, 'must provide password');
     // console.log(`username: ${username}, password: ${password}`);
-    checkAccount(username, password).then(isValid => {
+    checkAccount(username, password, true).then(isValid => {
         if (isValid == true) {
-            // res.send('Succeed');
+            res.send('Succeed');
         } else {
             apologyRender(res, 403, 'invalid username and/or password');
         }
@@ -107,11 +113,16 @@ app.post('/register', (req, res) => {
     }
     console.log(`username: ${username}, password: ${password}, confirmation: ${confirmation}`);
     // here you can save the data to a database or perform any other necessary actions
-    checkAccount(username, password).then(isValid => {
+    checkAccount(username, password, false).then(isValid => {
         if (isValid == true) {
             apologyRender(res, 400, 'The username existed, choose a other one');
         } else {
-            res.send('Register successful');
+            // TODO: Add data to 'accounts' collection
+            client.db('finance').collection('accounts').insertOne({ username: username, password: password }, (err) => {
+                if (err) throw err;
+                console.log("1 document inserted");
+                res.redirect('login');
+            });
         }
     });
 });
