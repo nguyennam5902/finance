@@ -75,12 +75,26 @@ function apologyRender(res, top, bottom) {
 // Set port
 app.set('port', process.env.PORT || 3000);
 
+app.get('/', (_req, res) => {
+    if (isUndefined(app.get('username'))) {
+        res.redirect('login');
+    } else {
+        res.render('index', { isLogin: isUndefined(app.get('username')) });
+    }
+});
+
+
+app.get('/buy', (_req, res) => {
+    res.render(`buy`, { isLogin: isUndefined(app.get('username')) });
+});
+
+app.get('/history', (_req, res) => {
+    res.render(`history`, { isLogin: isUndefined(app.get('username')) });
+});
+
 // Build path 
 app.get('/login', function (_req, res) {
     res.render('login', { isLogin: isUndefined(app.get('username')) });
-});
-app.get('apology', (_req, res) => {
-    res.render('apology');
 });
 
 app.post('/login', (req, res) => {
@@ -101,17 +115,10 @@ app.post('/login', (req, res) => {
         });
     }
 });
+
 app.get('/logout', (_req, res) => {
     app.set('username', null);
     res.redirect('/login');
-});
-
-app.get('/', (_req, res) => {
-    if (isUndefined(app.get('username'))) {
-        res.redirect('login');
-    } else {
-        res.render('index', { isLogin: isUndefined(app.get('username')) });
-    }
 });
 
 app.get('/quote', (_req, res) => {
@@ -132,9 +139,11 @@ app.post('/quote', (_req, res) => {
         }
     });
 })
+
 app.get('/register', (_req, res) => {
     res.render('register', { isLogin: isUndefined(app.get('username')) });
 });
+
 app.post('/register', (req, res) => {
     const username = req.body.username;
     const password = req.body.password;
@@ -161,6 +170,13 @@ app.post('/register', (req, res) => {
         }
     });
 });
+
+app.get('/sell', (_req, res) => {
+
+})
+app.post('/sell', (_req, res) => {
+
+})
 // Run
 app.listen(app.get('port'), () => {
     console.log(`Node app is running on port ${app.get('port')}`);
