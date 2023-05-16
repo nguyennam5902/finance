@@ -14,7 +14,7 @@
    <!-- https://favicon.io/emoji-favicons/money-mouth-face/ -->
    <link href="/static/favicon.ico" rel="icon">
 
-   <link href="/static/styles.css" rel="stylesheet">
+   <!-- <link href="/static/styles.css" rel="stylesheet"> -->
 
    <!-- http://getbootstrap.com/docs/4.5/ -->
    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"
@@ -24,9 +24,67 @@
       integrity="sha384-ho+j7jyWK8fNQe+A12Hb8AhRq26LrZ/JpcUGGOn+Y7RsweNrtN/tE3MoK7ZeZDyx"
       crossorigin="anonymous"></script>
 
-   <title>C$50 Finance: <%-title%>
-   </title>
+   <title>C$50 Finance: <%-title%></title>
+   <style>
+      nav .navbar-brand {
+         /* size for brand */
+         font-size: xx-large;
+      }
 
+      /* Colors for brand */
+      nav .navbar-brand .blue {
+         color: #537fbe;
+      }
+
+      nav .navbar-brand .red {
+         color: #ea433b;
+      }
+
+      nav .navbar-brand .yellow {
+         color: #f5b82e;
+      }
+
+      nav .navbar-brand .green {
+         color: #2e944b;
+      }
+
+      main .form-control {
+         /* Center form controls */
+         display: inline-block;
+
+         /* Override Bootstrap's 100% width for form controls */
+         width: auto;
+      }
+
+      main {
+         /* Scroll horizontally as needed */
+         overflow-x: auto;
+
+         /* Center contents */
+         text-align: center;
+      }
+
+      main img {
+         /* Constrain images on small screens */
+         max-width: 100%;
+      }
+
+      table {
+         background-color: transparent;
+         margin-bottom: 1rem;
+         width: 100%;
+      }
+
+      table th,
+      table td {
+         padding: 0.75rem;
+         text-align: left;
+      }
+
+      tbody tr:nth-of-type(odd) {
+         background-color: rgb(179, 208, 255, 0.3)
+      }
+   </style>
 </head>
 
 <body>
@@ -59,9 +117,7 @@
    </nav>
    </div>
 
-   <main class="container p-5">
-      <%-main%>
-   </main>
+   <main class="container p-5"><%-main%></main>
 
    <footer class="small text-center text-muted">
       Data provided for free by <a href="https://iextrading.com/developer">IEX</a>. View <a
