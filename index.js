@@ -48,17 +48,12 @@ const isLogin = false;
 
 // Get stocks price
 async function lookup(quote) {
-    fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${quote}&apikey=${apiKey}`)
-        .then(response => response.json())
-        .then(data => {
-            const quote_name = data['Global Quote']['01. symbol'];
-            const price = data['Global Quote']['05. price'];
-            console.log(`${quote_name} -> ${price}`)
-            return price;
-        })
-        .catch(error => console.error(error));
+    const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${quote}&apikey=SOK4MJ8AY4RK33W3`);
+    const data = await response.json();
+    const quote_name = data['Global Quote']['01. symbol'];
+    const price = data['Global Quote']['05. price'];
+    return [quote_name, price];
 }
-
 
 function escape(s) {
     const replacements = [["-", "--"], [" ", "-"], ["_", "__"], ["?", "~q"], ["%", "~p"], ["#", "~h"], ["/", "~s"], ["\"", "''"]];
@@ -125,8 +120,8 @@ app.post('/quote', (_req, res) => {
     if (isBlank(quote)) {
         apologyRender(res, 400, 'Quote does not exist');
     } else {
-        lookup(quote).then(price => {
-            res.render('quoted', { main: `<p>A share of ${quote} costs ${price}.</p>` });
+        lookup(quote).then(result => {
+            res.render('quoted', { main: `<p>A share of ${result[0]} costs ${result[1]}.</p>` });
         });
     }
 })
