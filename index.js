@@ -72,20 +72,45 @@ function apologyRender(res, top, bottom) {
     });
 }
 
+function isInteger(s) {
+    return parseInt(s) === Number(s);
+}
+
 // Set port
 app.set('port', process.env.PORT || 3000);
 
 app.get('/', (_req, res) => {
+    console.log(app.get('username'));
     if (isUndefined(app.get('username'))) {
-        res.redirect('login');
+        res.render('login', { isLogin: !isUndefined(app.get('username')) });
     } else {
-        res.render('index', { isLogin: isUndefined(app.get('username')) });
+        res.render('index', { isLogin: !isUndefined(app.get('username')) });
     }
 });
 
 
 app.get('/buy', (_req, res) => {
     res.render(`buy`, { isLogin: isUndefined(app.get('username')) });
+});
+app.post('/buy', (_req, res) => {
+    var quote = _req.body.symbol;
+    var amount = _req.body.shares;
+    console.log(`Quote: ${quote}, amount: ${amount}`);
+    if (isInteger(amount)) {
+        amount = parseInt(amount);
+        if (amount < 0) {
+            apologyRender(res, 400, `Positive is needed`);
+        }
+        lookup(quote).then(result => {
+            if (isUndefined(result[0]) == false && isUndefined(result[1]) == false) {
+                console.log(`Price: ${result[1]}`);
+            } else {
+
+            }
+        });
+    } else {
+        apologyRender(res, 400, `Int is needed!`);
+    }
 });
 
 app.get('/history', (_req, res) => {
@@ -108,7 +133,7 @@ app.post('/login', (req, res) => {
         checkAccount(username, password, true).then(isValid => {
             if (isValid == true) {
                 app.set('username', username);
-                res.redirect('/');
+                res.render('index', { isLogin: true });
             } else {
                 apologyRender(res, 403, 'invalid username and/or password');
             }
@@ -117,6 +142,7 @@ app.post('/login', (req, res) => {
 });
 
 app.get('/logout', (_req, res) => {
+    isLogin = false;
     app.set('username', null);
     res.redirect('/login');
 });
@@ -125,7 +151,7 @@ app.get('/quote', (_req, res) => {
     if (isUndefined(app.get(`username`))) {
         res.redirect('login');
     } else {
-        res.render('quote');
+        res.render('quote', { isLogin: isUndefined(app.get('username')) });
     }
 });
 
