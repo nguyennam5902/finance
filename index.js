@@ -13,9 +13,13 @@
 
 // Build Node
 const express = require('express'), fs = require('fs'), app = express();
+const mongoose = require('mongoose');
 const { MongoClient } = require('mongodb');
-const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net/');
+const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
 client.connect();
+mongoose.connect(`mongodb+srv://test:test@database.uzhnq7w.mongodb.net/finance`, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('Connected successfully to MongoDB'))
+    .catch(err => console.log('Error connecting to MongoDB:', err));
 function isBlank(str) {
     return (!str || str.trim().length === 0);
 }
@@ -38,6 +42,25 @@ async function checkAccount(username, password, isNeedCheckPassword) {
         console.error(err);
     }
 }
+
+// Define a schema for the 'accounts' collection
+const accountSchema = new mongoose.Schema({
+    username: { type: String, required: true },
+    password: { type: String, required: true },
+    cash: { type: Number, default: 10000.00 }
+});
+const Account = mongoose.model('Account', accountSchema);
+
+const newAccount = new Account({
+    username: 'nguyensqsqs',
+    password: 'tesqsqqsst'
+});
+
+// Save the new document to the 'accounts' collection
+// newAccount.save()
+//     .then(result => console.log('Inserted document:', result))
+//     .catch(err => console.log('Error inserting document:', err));
+
 app.use(express.urlencoded({ extended: true }));
 
 app.set('view engine', 'ejs');
@@ -53,8 +76,8 @@ async function lookup(quote) {
     const price = data['Global Quote']['05. price'];
     return [quote_name, price];
 }
-function isUndefined(value) {
-    return typeof value === 'undefined';
+function isValidString(str) {
+    return typeof str === "string" && str.trim().length > 0;
 }
 
 function escape(s) {
@@ -67,8 +90,9 @@ function escape(s) {
 function apologyRender(res, top, bottom) {
     bottom = escape(bottom);
     res.render('apology', {
-        main: '<img alt="' + top + '" class="border" src="http://memegen.link/custom/' + top + '/' + bottom + '.jpg?alt=https://i.imgur.com/CsCgN7Ll.png" title=' + bottom + '>',
-        isLogin: isUndefined(app.get('username')), top: top, bottom: bottom
+        // main: `<img alt=${top} class="border" src="http://memegen.link/custom/` + top + '/' + bottom + '.jpg?alt=https://i.imgur.com/CsCgN7Ll.png" title=' + bottom + '>',
+        main: `<img alt=${top} class="border" src="http://memegen.link/custom/${top}/${bottom}.jpg?alt=https://i.imgur.com/CsCgN7Ll.png" title=${bottom}>`,
+        isLogin: isValidString(app.get('username')), top: top, bottom: bottom
     });
 }
 
@@ -81,45 +105,52 @@ app.set('port', process.env.PORT || 3000);
 
 app.get('/', (_req, res) => {
     console.log(app.get('username'));
-    if (isUndefined(app.get('username'))) {
-        res.render('login', { isLogin: !isUndefined(app.get('username')) });
+    if (!isValidString(app.get('username'))) {
+        res.redirect('/login');
     } else {
-        res.render('index', { isLogin: !isUndefined(app.get('username')) });
+        res.render('index', { isLogin: isValidString(app.get('username')) });
     }
 });
 
 
 app.get('/buy', (_req, res) => {
-    res.render(`buy`, { isLogin: isUndefined(app.get('username')) });
+    res.render(`buy`, { isLogin: isValidString(app.get('username')) });
 });
+
 app.post('/buy', (_req, res) => {
     var quote = _req.body.symbol;
     var amount = _req.body.shares;
     console.log(`Quote: ${quote}, amount: ${amount}`);
-    if (isInteger(amount)) {
-        amount = parseInt(amount);
-        if (amount < 0) {
-            apologyRender(res, 400, `Positive is needed`);
-        }
-        lookup(quote).then(result => {
-            if (isUndefined(result[0]) == false && isUndefined(result[1]) == false) {
-                console.log(`Price: ${result[1]}`);
+    if (isValidString(quote)) {
+        if (isInteger(amount)) {
+            amount = parseInt(amount);
+            if (amount < 0) {
+                apologyRender(res, 400, `Positive is needed`);
             } else {
+                lookup(quote).then(result => {
+                    if (isValidString(result[0]) && isValidString(result[1])) {
+                        console.log(`Price: ${result[1]}`);
+                    } else {
+                        apologyRender(res, 400, `Quote does not exist`);
+                    }
+                });
 
             }
-        });
+        } else {
+            apologyRender(res, 400, `Int is needed!`);
+        }
     } else {
-        apologyRender(res, 400, `Int is needed!`);
+        apologyRender(res, 400, `Quote is needed`);
     }
 });
 
 app.get('/history', (_req, res) => {
-    res.render(`history`, { isLogin: isUndefined(app.get('username')) });
+    res.render(`history`, { isLogin: isValidString(app.get('username')) });
 });
 
 // Build path 
 app.get('/login', function (_req, res) {
-    res.render('login', { isLogin: isUndefined(app.get('username')) });
+    res.render('login', { isLogin: isValidString(app.get('username')) });
 });
 
 app.post('/login', (req, res) => {
@@ -144,22 +175,22 @@ app.post('/login', (req, res) => {
 app.get('/logout', (_req, res) => {
     isLogin = false;
     app.set('username', null);
-    res.redirect('/login');
+    res.render('login', { isLogin: false });
 });
 
 app.get('/quote', (_req, res) => {
-    if (isUndefined(app.get(`username`))) {
+    if (!isValidString(app.get(`username`))) {
         res.redirect('login');
     } else {
-        res.render('quote', { isLogin: isUndefined(app.get('username')) });
+        res.render('quote', { isLogin: isValidString(app.get('username')) });
     }
 });
 
 app.post('/quote', (_req, res) => {
     const quote = _req.body.symbol;
     lookup(quote).then(result => {
-        if (isUndefined(result[0]) == false && isUndefined(result[1]) == false) {
-            res.render('quoted', { main: `<p>A share of ${result[0]} costs ${result[1]} $.</p>` });
+        if (isValidString(result[0]) && isValidString(result[1])) {
+            res.render('quoted', { isLogin: isValidString(app.get(`username`)), main: `<p>A share of ${result[0]} costs ${result[1]} $.</p>` });
         } else {
             apologyRender(res, 400, 'Quote does not exist');
         }
@@ -167,7 +198,7 @@ app.post('/quote', (_req, res) => {
 })
 
 app.get('/register', (_req, res) => {
-    res.render('register', { isLogin: isUndefined(app.get('username')) });
+    res.render('register', { isLogin: false });
 });
 
 app.post('/register', (req, res) => {
@@ -182,13 +213,14 @@ app.post('/register', (req, res) => {
         apologyRender(res, 400, 'Password does not match');
     }
     // console.log(`username: ${username}, password: ${password}, confirmation: ${confirmation}`);
-    // here you can save the data to a database or perform any other necessary actions
     checkAccount(username, password, false).then(isValid => {
         if (isValid == true) {
             apologyRender(res, 400, 'The username existed, choose a other one');
         } else {
             // TODO: Add data to 'accounts' collection
-            client.db('finance').collection('accounts').insertOne({ username: username, password: password }, (err) => {
+            client.db('finance').collection('accounts').insertOne({
+                username: username, password: password, cash: 10000.00
+            }, err => {
                 if (err) throw err;
                 console.log("1 document inserted");
                 res.redirect('login');
