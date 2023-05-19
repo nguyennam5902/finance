@@ -13,13 +13,9 @@
 
 // Build Node
 const express = require('express'), fs = require('fs'), app = express();
-const mongoose = require('mongoose');
 const { MongoClient } = require('mongodb');
 const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
 client.connect();
-mongoose.connect(`mongodb+srv://test:test@database.uzhnq7w.mongodb.net/finance`, { useNewUrlParser: true, useUnifiedTopology: true })
-    .then(() => console.log('Connected successfully to MongoDB'))
-    .catch(err => console.log('Error connecting to MongoDB:', err));
 function isBlank(str) {
     return (!str || str.trim().length === 0);
 }
@@ -42,25 +38,6 @@ async function checkAccount(username, password, isNeedCheckPassword) {
         console.error(err);
     }
 }
-
-// Define a schema for the 'accounts' collection
-const accountSchema = new mongoose.Schema({
-    username: { type: String, required: true },
-    password: { type: String, required: true },
-    cash: { type: Number, default: 10000.00 }
-});
-const Account = mongoose.model('Account', accountSchema);
-
-const newAccount = new Account({
-    username: 'nguyensqsqs',
-    password: 'tesqsqqsst'
-});
-
-// Save the new document to the 'accounts' collection
-// newAccount.save()
-//     .then(result => console.log('Inserted document:', result))
-//     .catch(err => console.log('Error inserting document:', err));
-
 app.use(express.urlencoded({ extended: true }));
 
 app.set('view engine', 'ejs');
@@ -108,6 +85,7 @@ app.get('/', (_req, res) => {
     if (!isValidString(app.get('username'))) {
         res.redirect('/login');
     } else {
+
         res.render('index', { isLogin: isValidString(app.get('username')) });
     }
 });
@@ -118,18 +96,42 @@ app.get('/buy', (_req, res) => {
 });
 
 app.post('/buy', (_req, res) => {
-    var quote = _req.body.symbol;
-    var amount = _req.body.shares;
+    const quote = _req.body.symbol;
+    const amount = _req.body.shares;
     console.log(`Quote: ${quote}, amount: ${amount}`);
     if (isValidString(quote)) {
         if (isInteger(amount)) {
-            amount = parseInt(amount);
-            if (amount < 0) {
+            const amountInt = parseInt(amount);
+            if (amountInt < 0) {
                 apologyRender(res, 400, `Positive is needed`);
             } else {
                 lookup(quote).then(result => {
                     if (isValidString(result[0]) && isValidString(result[1])) {
-                        console.log(`Price: ${result[1]}`);
+                        const company = result[0];
+                        const price = result[1];
+                        const allSum = price * amountInt;
+                        try {
+                            const database = client.db('finance');
+                            database.collection('accounts').findOne({
+                                username: app.get(`username`)
+                            }).then(result => {
+                                if (result.cash < allSum) {
+                                    console.log(`${result.cash} < ${allSum}`);
+                                    apologyRender(res, 400, `Not enough money`);
+                                } else {
+                                    database.collection('accounts').updateOne({
+                                        username: app.get(`username`)
+                                    }, { $set: { cash: 100000.00 } }).then(() => { console.log('Document updated'); }).catch(err => {
+                                        if (err) {
+                                            console.log('ERROR');
+                                            throw err;
+                                        }
+                                    });
+                                }
+                            });
+                        } catch (err) {
+                            console.error(err);
+                        }
                     } else {
                         apologyRender(res, 400, `Quote does not exist`);
                     }
@@ -164,7 +166,7 @@ app.post('/login', (req, res) => {
         checkAccount(username, password, true).then(isValid => {
             if (isValid == true) {
                 app.set('username', username);
-                res.render('index', { isLogin: true });
+                res.redirect('/');
             } else {
                 apologyRender(res, 403, 'invalid username and/or password');
             }
@@ -230,7 +232,11 @@ app.post('/register', (req, res) => {
 });
 
 app.get('/sell', (_req, res) => {
-
+    if (isValidString(app.get(`username`))) {
+        res.render('sell', { isLogin: isValidString(app.get('username')) });
+    } else {
+        res.redirect('login');
+    }
 })
 app.post('/sell', (_req, res) => {
 
