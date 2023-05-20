@@ -12,7 +12,7 @@
  */
 
 // Build Node
-const express = require('express'), fs = require('fs'), app = express();
+const express = require('express'), app = express();
 const { MongoClient } = require('mongodb');
 const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
 client.connect();
@@ -43,15 +43,24 @@ app.use(express.urlencoded({ extended: true }));
 app.set('view engine', 'ejs');
 app.set('views', 'templates');
 
-const apiKey = 'SOK4MJ8AY4RK33W3';
+const API_KEY = 'SOK4MJ8AY4RK33W3';
 
-// Get stocks price
-async function lookup(quote) {
-    const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${quote}&apikey=${apiKey}`);
-    const data = await response.json();
+// Get stocks name, company and price
+async function lookupPrice(quote) {
+    const priceURL = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${quote}&apikey=${API_KEY}`);
+    const data = await priceURL.json();
     const quote_name = data['Global Quote']['01. symbol'];
     const price = data['Global Quote']['05. price'];
     return [quote_name, price];
+}
+/** Given a quote, return its company's name
+ * @param quote: 
+ */
+async function lookupQuoteCompany(quote) {
+    const response = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${quote}&apikey=${API_KEY}`);
+    const data = await response.json();
+    const company = data['Name'];
+    return company;
 }
 function isValidString(str) {
     return typeof str === "string" && str.trim().length > 0;
@@ -90,31 +99,31 @@ app.get('/', (_req, res) => {
             const pipeline = [{ $match: { username: app.get(`username`) } }, {
                 $group: {
                     _id: '$symbol',
-                    symbol: { $first: '$symbol' },
+                    company: { $first: '$company' },
                     totalShares: { $sum: '$shares' },
                     price: { $first: '$price' },
                     totalPrice: { $sum: { $multiply: ['$shares', '$price'] } }
                 }
             }];
             collection.aggregate(pipeline).toArray().then(result => {
-                const header = '<thead><tr><td><b>Symbol</b></td><td><b>Name</b></td><td><b>Shares</b></td><td><b>Price</b></td><td><b>TOTAL</b></td></tr></thead>';
-                var body = '';
-                for (let index = 0; index < result.length; index++) {
-                    const row = result[index];
-                    if (row.totalShares > 0) {
-                        body = body + `<tr>
-                    <td>${row._id}</td>
-                    <td>${row.symbol}</td>
-                    <td>${row.totalShares}</td>
-                    <td>${row.price + ' $'}</td>
-                    <td>${row.totalPrice + ' $'}</td>
-                    </tr>`;
+                database.collection('accounts').findOne({
+                    username: app.get('username')
+                }).then(cashResult => {
+                    const header = '<thead><tr><td><b>Symbol</b></td><td><b>Name</b></td><td><b>Shares</b></td><td><b>Price</b></td><td><b>TOTAL</b></td></tr></thead>';
+                    var body = '';
+                    var sum = cashResult.cash;
+                    for (let index = 0; index < result.length; index++) {
+                        const row = result[index];
+                        if (row.totalShares > 0)
+                            body = body + `<tr><td>${row._id}</td><td>${row.company}</td><td>${row.totalShares}</td><td>${row.price + ' $'}</td><td>${row.totalPrice + ' $'}</td></tr>`;
+                        sum = sum + row.price * row.totalShares;
                     }
-                }
-                console.log(result);
-                res.render('index', {
-                    isLogin: isValidString(app.get('username')),
-                    main: `<table>${header}<tbody>${body}</tbody></table>`
+                    body = body + `<tr><td>CASH</td><td></td><td></td><td></td><td>${cashResult.cash} $</td></tr><tr><td></td><td></td><td></td><td></td><td><b>${sum} $</b></td></tr>`;
+                    console.log(result);
+                    res.render('index', {
+                        isLogin: isValidString(app.get('username')),
+                        main: `<table>${header}<tbody>${body}</tbody></table>`
+                    });
                 });
             });
         } catch (err) {
@@ -137,40 +146,43 @@ app.post('/buy', (_req, res) => {
             if (amountInt < 0) {
                 apologyRender(res, 400, `Positive is needed`);
             } else {
-                lookup(quote).then(result => {
+                lookupPrice(quote).then(result => {
                     if (isValidString(result[0]) && isValidString(result[1])) {
-                        const company = result[0], price = parseFloat(result[1]);
-                        const allSum = price * amountInt;
-                        try {
-                            const database = client.db('finance');
-                            database.collection('accounts').findOne({
-                                username: app.get(`username`)
-                            }).then(result => {
-                                if (result.cash < allSum) {
-                                    // console.log(`${result.cash} < ${allSum}`);
-                                    apologyRender(res, 400, `Not enough money`);
-                                } else {
-                                    database.collection('transactions').insertOne({
-                                        username: app.get(`username`),
-                                        symbol: quote,
-                                        company: company,
-                                        shares: amountInt,
-                                        price: price,
-                                        cash: result.cash - allSum
-                                    }).then(console.log('Document inserted')).catch(err => {
-                                        if (err) { console.log('ERROR'); throw err; }
-                                    });
-                                    database.collection('accounts').updateOne({
-                                        username: app.get(`username`)
-                                    }, { $set: { cash: result.cash - allSum } }).then(console.log('Document updated')).catch(err => {
-                                        if (err) { console.log('ERROR'); throw err; }
-                                    });
-                                    res.redirect('/');
-                                }
-                            });
-                        } catch (err) {
-                            console.error(err);
-                        }
+                        lookupQuoteCompany(quote).then(company => {
+                            const price = parseFloat(result[1]);
+                            const allSum = price * amountInt;
+                            try {
+                                const database = client.db('finance');
+                                database.collection('accounts').findOne({
+                                    username: app.get(`username`)
+                                }).then(result => {
+                                    if (result.cash < allSum) {
+                                        // console.log(`${result.cash} < ${allSum}`);
+                                        apologyRender(res, 400, `Not enough money`);
+                                    } else {
+                                        database.collection('transactions').insertOne({
+                                            username: app.get(`username`),
+                                            symbol: quote,
+                                            company: company,
+                                            shares: amountInt,
+                                            price: price,
+                                            cash: result.cash - allSum
+                                        }).then(console.log('Document inserted')).catch(err => {
+                                            if (err) { console.log('ERROR'); throw err; }
+                                        });
+                                        database.collection('accounts').updateOne({
+                                            username: app.get(`username`)
+                                        }, { $set: { cash: result.cash - allSum } }).then(console.log('Document updated')).catch(err => {
+                                            if (err) { console.log('ERROR'); throw err; }
+                                        });
+                                        res.redirect('/');
+                                    }
+                                });
+                            } catch (err) {
+                                console.error(err);
+                            }
+
+                        }).catch(err => { if (err) throw err; });
                     } else {
                         apologyRender(res, 400, `Quote does not exist`);
                     }
@@ -229,9 +241,11 @@ app.get('/quote', (_req, res) => {
 
 app.post('/quote', (_req, res) => {
     const quote = _req.body.symbol;
-    lookup(quote).then(result => {
+    lookupPrice(quote).then(result => {
         if (isValidString(result[0]) && isValidString(result[1])) {
-            res.render('quoted', { isLogin: isValidString(app.get(`username`)), main: `<p>A share of ${result[0]} costs ${result[1]} $.</p>` });
+            lookupQuoteCompany(quote).then(company => {
+                res.render('quoted', { isLogin: isValidString(app.get(`username`)), main: `<p>A share of ${company} costs ${result[1]} $.</p>` });
+            }).catch(err => { if (err) throw err; });
         } else {
             apologyRender(res, 400, 'Quote does not exist');
         }
