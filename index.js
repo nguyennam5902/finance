@@ -67,7 +67,6 @@ function escape(s) {
 function apologyRender(res, top, bottom) {
     bottom = escape(bottom);
     res.render('apology', {
-        // main: `<img alt=${top} class="border" src="http://memegen.link/custom/` + top + '/' + bottom + '.jpg?alt=https://i.imgur.com/CsCgN7Ll.png" title=' + bottom + '>',
         main: `<img alt=${top} class="border" src="http://memegen.link/custom/${top}/${bottom}.jpg?alt=https://i.imgur.com/CsCgN7Ll.png" title=${bottom}>`,
         isLogin: isValidString(app.get('username')), top: top, bottom: bottom
     });
@@ -85,8 +84,42 @@ app.get('/', (_req, res) => {
     if (!isValidString(app.get('username'))) {
         res.redirect('/login');
     } else {
-
-        res.render('index', { isLogin: isValidString(app.get('username')) });
+        try {
+            const database = client.db('finance');
+            const collection = database.collection('transactions');
+            const pipeline = [{ $match: { username: app.get(`username`) } }, {
+                $group: {
+                    _id: '$symbol',
+                    symbol: { $first: '$symbol' },
+                    totalShares: { $sum: '$shares' },
+                    price: { $first: '$price' },
+                    totalPrice: { $sum: { $multiply: ['$shares', '$price'] } }
+                }
+            }];
+            collection.aggregate(pipeline).toArray().then(result => {
+                const header = '<thead><tr><td><b>Symbol</b></td><td><b>Name</b></td><td><b>Shares</b></td><td><b>Price</b></td><td><b>TOTAL</b></td></tr></thead>';
+                var body = '';
+                for (let index = 0; index < result.length; index++) {
+                    const row = result[index];
+                    if (row.totalShares > 0) {
+                        body = body + `<tr>
+                    <td>${row._id}</td>
+                    <td>${row.symbol}</td>
+                    <td>${row.totalShares}</td>
+                    <td>${row.price + ' $'}</td>
+                    <td>${row.totalPrice + ' $'}</td>
+                    </tr>`;
+                    }
+                }
+                console.log(result);
+                res.render('index', {
+                    isLogin: isValidString(app.get('username')),
+                    main: `<table>${header}<tbody>${body}</tbody></table>`
+                });
+            });
+        } catch (err) {
+            console.error(err);
+        }
     }
 });
 
@@ -96,8 +129,7 @@ app.get('/buy', (_req, res) => {
 });
 
 app.post('/buy', (_req, res) => {
-    const quote = _req.body.symbol;
-    const amount = _req.body.shares;
+    const quote = _req.body.symbol, amount = _req.body.shares;
     console.log(`Quote: ${quote}, amount: ${amount}`);
     if (isValidString(quote)) {
         if (isInteger(amount)) {
@@ -107,8 +139,7 @@ app.post('/buy', (_req, res) => {
             } else {
                 lookup(quote).then(result => {
                     if (isValidString(result[0]) && isValidString(result[1])) {
-                        const company = result[0];
-                        const price = result[1];
+                        const company = result[0], price = parseFloat(result[1]);
                         const allSum = price * amountInt;
                         try {
                             const database = client.db('finance');
@@ -116,17 +147,25 @@ app.post('/buy', (_req, res) => {
                                 username: app.get(`username`)
                             }).then(result => {
                                 if (result.cash < allSum) {
-                                    console.log(`${result.cash} < ${allSum}`);
+                                    // console.log(`${result.cash} < ${allSum}`);
                                     apologyRender(res, 400, `Not enough money`);
                                 } else {
+                                    database.collection('transactions').insertOne({
+                                        username: app.get(`username`),
+                                        symbol: quote,
+                                        company: company,
+                                        shares: amountInt,
+                                        price: price,
+                                        cash: result.cash - allSum
+                                    }).then(console.log('Document inserted')).catch(err => {
+                                        if (err) { console.log('ERROR'); throw err; }
+                                    });
                                     database.collection('accounts').updateOne({
                                         username: app.get(`username`)
-                                    }, { $set: { cash: 100000.00 } }).then(() => { console.log('Document updated'); }).catch(err => {
-                                        if (err) {
-                                            console.log('ERROR');
-                                            throw err;
-                                        }
+                                    }, { $set: { cash: result.cash - allSum } }).then(console.log('Document updated')).catch(err => {
+                                        if (err) { console.log('ERROR'); throw err; }
                                     });
+                                    res.redirect('/');
                                 }
                             });
                         } catch (err) {
