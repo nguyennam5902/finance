@@ -349,7 +349,7 @@ app.post('/sell', (_req, res) => {
                 try {
                     lookupPrice(symbol).then(quoteAndPrice => {
                         if (isValidString(quoteAndPrice[0]) && isValidString(quoteAndPrice[1])) {
-                            //TODO: SELL
+                            //TODO: #1 SELL
                             const database= client.db('finance');
                             // database.collection('transactions');
                             database.collection('transactions').distinct('symbol', { username: app.get('username') }).then(symbols => {
