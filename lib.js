@@ -1,7 +1,10 @@
 const express = require('express'), app = express(), bcrypt = require('bcryptjs');
 const { MongoClient } = require('mongodb');
-const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
+const API_KEY = 'SOK4MJ8AY4RK33W3';
+global.client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
+client.connect();
 const database = client.db('finance');
+
 /**
  * Return current date and time in GMT+7
  * 
@@ -38,8 +41,6 @@ async function checkAccount(username, password, isNeedCheckPassword) {
     }
   } catch (err) { console.error(err); }
 }
-
-
 async function comparePasswords(plainPassword, hashedPassword) {
   try {
     const match = await bcrypt.compare(plainPassword, hashedPassword);
@@ -98,19 +99,5 @@ function apologyRender(res, top, bottom) {
   });
 }
 
-function isInteger(s) {
-  return parseInt(s) === Number(s);
-}
-module.exports = {
-  getDateTime,
-  isBlank,
-  checkAccount,
-  comparePasswords,
-  hashPassword,
-  lookupPrice,
-  lookupQuoteCompany,
-  isValidString,
-  escape,
-  apologyRender,
-  isInteger
-};
+function isInteger(s) { return parseInt(s) === Number(s); }
+module.exports = { getDateTime, isBlank, checkAccount, hashPassword, lookupPrice, lookupQuoteCompany, isValidString, apologyRender, isInteger };

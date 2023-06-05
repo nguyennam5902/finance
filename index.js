@@ -12,124 +12,19 @@
  */
 
 // Build Node
-const express = require('express'), app = express(), bcrypt = require('bcryptjs');
+const express = require('express'), app = express();
 const lib = require("./lib");
-const { MongoClient } = require('mongodb');
-const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
-const API_KEY = 'SOK4MJ8AY4RK33W3';
-client.connect();
+const database = global.client.db('finance');
 
 app.use(express.urlencoded({ extended: true }));
 app.set('view engine', 'ejs');
 app.set('views', 'templates');
-const database = client.db('finance');
-
-/**
- * Return current date and time in GMT+7
- * 
- * @see https://stackoverflow.com/questions/10087819/convert-date-to-another-timezone-in-javascript
- */
-function getDateTime() {
-    return new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
-}
-
-function isBlank(str) {
-    return (!str || str.trim().length === 0);
-}
-
-/**
- * Connect to collection 'accounts' in 'finance' database with username and password
- * @param username account's username
- * @param password account's password
- * @param isNeedCheckPassword flag for checking if need to check both username and password
- * @returns True if the account exists and otherwise
- */
-async function checkAccount(username, password, isNeedCheckPassword) {
-    try {
-        const collection = database.collection('accounts');
-        const condition = { 'username': username };
-        const acc = (await collection.findOne(condition));
-        if (acc == null) {
-            return false;
-        } else {
-            if (isNeedCheckPassword) {
-                return (await comparePasswords(password, acc.password));
-            } else {
-                return true;
-            }
-        }
-    } catch (err) { console.error(err); }
-}
-
-
-async function comparePasswords(plainPassword, hashedPassword) {
-    try {
-        const match = await bcrypt.compare(plainPassword, hashedPassword);
-        return match;
-    } catch (e) {
-        console.error(`Error while comparing passwords: ${e.message}`);
-        return false;
-    }
-}
-async function hashPassword(password) {
-    try {
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        return hashedPassword;
-    } catch (e) {
-        console.error(`Error while hashing password: ${e.message}`);
-        return null;
-    }
-}
-
-
-
-// Get stocks name, company and price
-async function lookupPrice(quote) {
-    const priceURL = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${quote}&apikey=${API_KEY}`);
-    const data = await priceURL.json();
-    const quote_name = data['Global Quote']['01. symbol'];
-    const price = data['Global Quote']['05. price'];
-    return [quote_name, price];
-}
-/** Given a quote, return its company's name
- * @param quote
- */
-async function lookupQuoteCompany(quote) {
-    const response = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${quote}&apikey=${API_KEY}`);
-    const data = await response.json();
-    const company = data['Name'];
-    return company;
-}
-function isValidString(str) {
-    return typeof str === "string" && str.trim().length > 0;
-}
-
-function escape(s) {
-    const replacements = [["-", "--"], [" ", "-"], ["_", "__"], ["?", "~q"], ["%", "~p"], ["#", "~h"], ["/", "~s"], ["\"", "''"]];
-    for (var i = 0; i < replacements.length; i++)
-        s = s.replace(replacements[i][0], replacements[i][1]);
-    return s;
-}
-
-function apologyRender(res, top, bottom) {
-    bottom = escape(bottom);
-    res.render('apology', {
-        main: `<img alt=${top} class="border" src="http://memegen.link/custom/${top}/${bottom}.jpg?alt=https://i.imgur.com/CsCgN7Ll.png" title=${bottom}>`,
-        isLogin: isValidString(app.get('username')), top: top, bottom: bottom
-    });
-}
-
-function isInteger(s) {
-    return parseInt(s) === Number(s);
-}
-
 // Set port
 app.set('port', process.env.PORT || 3000);
 
 app.get('/', (_req, res) => {
     // console.log(app.get('username'));
-    if (!isValidString(app.get('username'))) {
+    if (!lib.isValidString(app.get('username'))) {
         res.redirect('/login');
     } else {
         try {
@@ -165,24 +60,23 @@ app.get('/', (_req, res) => {
     }
 });
 
-
 app.get('/buy', (_req, res) => {
-    if (isValidString(app.get(`username`))) { res.render(`buy`, { isLogin: true }); }
+    if (lib.isValidString(app.get(`username`))) { res.render(`buy`, { isLogin: true }); }
     else { res.redirect('/login'); }
 });
 
 app.post('/buy', (_req, res) => {
     const quote = _req.body.symbol, amount = _req.body.shares;
     // console.log(`Quote: ${quote}, amount: ${amount}`);
-    if (isValidString(quote)) {
-        if (isInteger(amount)) {
+    if (lib.isValidString(quote)) {
+        if (lib.isInteger(amount)) {
             const amountInt = parseInt(amount);
             if (amountInt < 0) {
-                apologyRender(res, 400, `Positive is needed`);
+                lib.apologyRender(res, 400, `Positive is needed`);
             } else {
-                lookupPrice(quote).then(quoteAndPrice => {
-                    if (isValidString(quoteAndPrice[0]) && isValidString(quoteAndPrice[1])) {
-                        lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
+                lib.lookupPrice(quote).then(quoteAndPrice => {
+                    if (lib.isValidString(quoteAndPrice[0]) && lib.isValidString(quoteAndPrice[1])) {
+                        lib.lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
                             // console.log(`${quoteAndPrice[0]} --> ${companyName}`);
                             const price = parseFloat(quoteAndPrice[1]);
                             const allSum = price * amountInt;
@@ -192,7 +86,7 @@ app.post('/buy', (_req, res) => {
                                 }).then(acc => {
                                     if (acc.cash < allSum) {
                                         // console.log(`${result.cash} < ${allSum}`);
-                                        apologyRender(res, 400, `Not enough money`);
+                                        lib.apologyRender(res, 400, `Not enough money`);
                                     } else {
                                         database.collection('transactions').insertOne({
                                             username: app.get(`username`),
@@ -201,7 +95,7 @@ app.post('/buy', (_req, res) => {
                                             shares: amountInt,
                                             price: price,
                                             cash: acc.cash - allSum,
-                                            transactionTime: getDateTime()
+                                            transactionTime: lib.getDateTime()
                                         }).catch(err => { if (err) throw err; });
                                         database.collection('accounts').updateOne({
                                             username: app.get(`username`)
@@ -212,15 +106,15 @@ app.post('/buy', (_req, res) => {
                                 });
                             } catch (err) { console.error(err); }
                         }).catch(err => { if (err) throw err; });
-                    } else { apologyRender(res, 400, `Quote does not exist`); }
+                    } else { lib.apologyRender(res, 400, `Quote does not exist`); }
                 });
             }
-        } else { apologyRender(res, 400, `Int is needed!`); }
-    } else { apologyRender(res, 400, `Quote is needed`); }
+        } else { lib.apologyRender(res, 400, `Int is needed!`); }
+    } else { lib.apologyRender(res, 400, `Quote is needed`); }
 });
 
 app.get('/history', (_req, res) => {
-    if (isValidString(app.get('username'))) {
+    if (lib.isValidString(app.get('username'))) {
         try {
             const header = `<thead><tr><td><b>Symbol</b></td><td><b>Shares</b></td><td><b>Price</b></td><td><b>Transaction's time</b></td></tr></thead>`;
             var body = '';
@@ -240,7 +134,6 @@ app.get('/history', (_req, res) => {
     } else { res.redirect('/login'); }
 });
 
-// Build path 
 app.get('/login', function (_req, res) {
     app.set('username', null);
     res.render('login', { isLogin: false });
@@ -248,16 +141,16 @@ app.get('/login', function (_req, res) {
 
 app.post('/login', (req, res) => {
     const username = req.body.username, password = req.body.password;
-    if (isBlank(username))
-        apologyRender(res, 403, 'must provide username');
-    else if (isBlank(password))
-        apologyRender(res, 403, 'must provide password');
+    if (lib.isBlank(username))
+        lib.apologyRender(res, 403, 'must provide username');
+    else if (lib.isBlank(password))
+        lib.apologyRender(res, 403, 'must provide password');
     // console.log(`username: ${username}, password: ${password}`);
     else {
-        checkAccount(username, password, true).then(isValid => {
+        lib.checkAccount(username, password, true).then(isValid => {
             if (isValid) {
                 app.set('username', username); res.redirect('/');
-            } else { apologyRender(res, 403, 'invalid username and/or password'); }
+            } else { lib.apologyRender(res, 403, 'invalid username and/or password'); }
         });
     }
 });
@@ -268,7 +161,7 @@ app.get('/logout', (_req, res) => {
 });
 
 app.get('/quote', (_req, res) => {
-    if (!isValidString(app.get(`username`))) {
+    if (!lib.isValidString(app.get(`username`))) {
         res.redirect('login');
     } else {
         res.render('quote', { isLogin: true });
@@ -277,16 +170,16 @@ app.get('/quote', (_req, res) => {
 
 app.post('/quote', (_req, res) => {
     const quote = _req.body.symbol;
-    lookupPrice(quote).then(quoteAndPrice => {
-        if (isValidString(quoteAndPrice[0]) && isValidString(quoteAndPrice[1])) {
-            lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
+    lib.lookupPrice(quote).then(quoteAndPrice => {
+        if (lib.isValidString(quoteAndPrice[0]) && lib.isValidString(quoteAndPrice[1])) {
+            lib.lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
                 res.render('quoted', {
-                    isLogin: isValidString(app.get(`username`)),
+                    isLogin: lib.isValidString(app.get(`username`)),
                     main: `<p>A share of ${companyName} costs ${quoteAndPrice[1]} $.</p>`
                 });
             }).catch(err => { if (err) throw err; });
         } else {
-            apologyRender(res, 400, 'Quote does not exist');
+            lib.apologyRender(res, 400, 'Quote does not exist');
         }
     });
 })
@@ -297,14 +190,14 @@ app.get('/register', (_req, res) => {
 
 app.post('/register', (req, res) => {
     const username = req.body.username, password = req.body.password, confirmation = req.body.confirmation;
-    if (isBlank(username)) { apologyRender(res, 400, 'must provide username'); }
-    else if (isBlank(password)) { apologyRender(res, 400, 'must provide password'); }
-    else if (password !== confirmation) { apologyRender(res, 400, 'Password does not match'); }
+    if (lib.isBlank(username)) { lib.apologyRender(res, 400, 'must provide username'); }
+    else if (lib.isBlank(password)) { lib.apologyRender(res, 400, 'must provide password'); }
+    else if (password !== confirmation) { lib.apologyRender(res, 400, 'Password does not match'); }
     // console.log(`username: ${username}, password: ${password}, confirmation: ${confirmation}`);
-    checkAccount(username, password, false).then(isValid => {
-        if (isValid == true) { apologyRender(res, 400, 'The username existed, choose a other one') }
+    lib.checkAccount(username, password, false).then(isValid => {
+        if (isValid == true) { lib.apologyRender(res, 400, 'The username existed, choose a other one') }
         else {
-            hashPassword(password).then(hashResult => {
+            lib.hashPassword(password).then(hashResult => {
                 database.collection('accounts').insertOne({
                     username: username, password: hashResult, cash: 10000.00
                 }, err => {
@@ -319,7 +212,7 @@ app.post('/register', (req, res) => {
 });
 
 app.get('/sell', (_req, res) => {
-    if (isValidString(app.get(`username`))) {
+    if (lib.isValidString(app.get(`username`))) {
         try {
             database.collection('transactions').distinct('symbol', { username: app.get('username') }).then(symbols => {
                 var options = '<option>Symbol</option>';
@@ -332,14 +225,15 @@ app.get('/sell', (_req, res) => {
             });
         } catch (err) { console.error(err); }
     } else { res.redirect('login'); }
-})
+});
+
 app.post('/sell', (_req, res) => {
     const symbol = _req.body.symbol, amount = _req.body.shares;
-    if (isValidString(symbol)) {
+    if (lib.isValidString(symbol)) {
         // console.log('Choice: ' + symbol);
-        if (isInteger(amount)) {
+        if (lib.isInteger(amount)) {
             var amountInt = parseInt(amount);
-            if (amountInt < 0) { apologyRender(res, 400, 'Positive is needed'); }
+            if (amountInt < 0) { lib.apologyRender(res, 400, 'Positive is needed'); }
             else {
                 amountInt = amountInt * -1;
                 try {
@@ -350,13 +244,13 @@ app.post('/sell', (_req, res) => {
                         { $project: { _id: false, totalShares: true } }
                     ]).toArray((err, sum_shares) => {
                         if (sum_shares.length == 0) {
-                            apologyRender(res, 400, 'Quote does not exist')
+                            lib.apologyRender(res, 400, 'Quote does not exist')
                         } else {
-                            if (amountInt * -1 > sum_shares[0].totalShares) { apologyRender(res, 400, 'Not enough to purchase'); }
+                            if (amountInt * -1 > sum_shares[0].totalShares) { lib.apologyRender(res, 400, 'Not enough to purchase'); }
                             else {
-                                lookupPrice(symbol).then(quoteAndPrice => {
-                                    if (isValidString(quoteAndPrice[0]) && isValidString(quoteAndPrice[1])) {
-                                        lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
+                                lib.lookupPrice(symbol).then(quoteAndPrice => {
+                                    if (lib.isValidString(quoteAndPrice[0]) && lib.isValidString(quoteAndPrice[1])) {
+                                        lib.lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
                                             const price = parseFloat(quoteAndPrice[1]);
                                             const allSum = price * amountInt;
                                             database.collection('accounts').findOne({ username: app.get('username') }).then(acc => {
@@ -368,7 +262,7 @@ app.post('/sell', (_req, res) => {
                                                     shares: amountInt,
                                                     price: price,
                                                     cash: acc.cash - allSum,
-                                                    transactionTime: getDateTime()
+                                                    transactionTime: lib.getDateTime()
                                                 }).then(console.log('Document inserted')).catch(err => { if (err) { throw err; } });
                                                 database.collection('accounts').updateOne(
                                                     { username: app.get(`username`) },
@@ -377,7 +271,7 @@ app.post('/sell', (_req, res) => {
                                                 res.redirect('/');
                                             });
                                         });
-                                    } else { apologyRender(res, 400, 'Quote does not exist'); }
+                                    } else { lib.apologyRender(res, 400, 'Quote does not exist'); }
                                 });
                             }
                         }
@@ -385,9 +279,12 @@ app.post('/sell', (_req, res) => {
                 }
                 catch (err) { console.error(err); }
             }
-        } else { apologyRender(res, 400, 'Int is needed'); }
-    } else { apologyRender(res, 400, 'Quote is needed'); }
+        } else { lib.apologyRender(res, 400, 'Int is needed'); }
+    } else { lib.apologyRender(res, 400, 'Quote is needed'); }
 });
+
+global.client.connect();
+
 // Run
 app.listen(app.get('port'), () => {
     console.log(`Node app is running on port ${app.get('port')}`);
