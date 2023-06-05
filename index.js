@@ -12,7 +12,8 @@
  */
 
 // Build Node
-const express = require('express'), app = express();
+const express = require('express'), app = express(), bcrypt = require('bcryptjs');
+const lib = require("./lib");
 const { MongoClient } = require('mongodb');
 const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
 const API_KEY = 'SOK4MJ8AY4RK33W3';
@@ -21,7 +22,7 @@ client.connect();
 app.use(express.urlencoded({ extended: true }));
 app.set('view engine', 'ejs');
 app.set('views', 'templates');
-const database= client.db('finance');
+const database = client.db('finance');
 
 /**
  * Return current date and time in GMT+7
@@ -35,6 +36,7 @@ function getDateTime() {
 function isBlank(str) {
     return (!str || str.trim().length === 0);
 }
+
 /**
  * Connect to collection 'accounts' in 'finance' database with username and password
  * @param username account's username
@@ -44,15 +46,39 @@ function isBlank(str) {
  */
 async function checkAccount(username, password, isNeedCheckPassword) {
     try {
-        const collection = client.db('finance').collection('accounts');
-        var aggregation;
-        if (isNeedCheckPassword)
-            aggregation = [{ $match: { 'username': username, 'password': password } }, { $count: 'result' }];
-        else aggregation = [{ $match: { 'username': username } }, { $count: 'result' }];
-        const length = (await collection.aggregate(aggregation).toArray()).length;
-        return (length != 0);
-    } catch (err) {
-        console.error(err);
+        const collection = database.collection('accounts');
+        const condition = { 'username': username };
+        const acc = (await collection.findOne(condition));
+        if (acc == null) {
+            return false;
+        } else {
+            if (isNeedCheckPassword) {
+                return (await comparePasswords(password, acc.password));
+            } else {
+                return true;
+            }
+        }
+    } catch (err) { console.error(err); }
+}
+
+
+async function comparePasswords(plainPassword, hashedPassword) {
+    try {
+        const match = await bcrypt.compare(plainPassword, hashedPassword);
+        return match;
+    } catch (e) {
+        console.error(`Error while comparing passwords: ${e.message}`);
+        return false;
+    }
+}
+async function hashPassword(password) {
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        return hashedPassword;
+    } catch (e) {
+        console.error(`Error while hashing password: ${e.message}`);
+        return null;
     }
 }
 
@@ -127,7 +153,7 @@ app.get('/', (_req, res) => {
                     for (let i = 0; i < rows.length; i++) {
                         const row = rows[i];
                         if (row.totalShares > 0)
-                            body = body + `<tr><td>${row._id}</td><td>${row.company}</td><td>${row.totalShares}</td><td>${row.price + ' $'}</td><td>${row.totalPrice + ' $'}</td></tr>`;
+                            body = body + `<tr><td>${row._id}</td><td>${row.company}</td><td>${row.totalShares}</td><td>${row.price + ' $'}</td><td>${row.totalPrice.toFixed(2) + ' $'}</td></tr>`;
                         sum = sum + row.price * row.totalShares;
                     }
                     body = body + `<tr><td><b>CASH</b></td><td></td><td></td><td></td><td>${cashResult.cash.toFixed(2)} $</td></tr><tr><td></td><td></td><td></td><td></td><td><b>${sum} $</b></td></tr>`;
@@ -229,7 +255,7 @@ app.post('/login', (req, res) => {
     // console.log(`username: ${username}, password: ${password}`);
     else {
         checkAccount(username, password, true).then(isValid => {
-            if (isValid == true) {
+            if (isValid) {
                 app.set('username', username); res.redirect('/');
             } else { apologyRender(res, 403, 'invalid username and/or password'); }
         });
@@ -278,13 +304,16 @@ app.post('/register', (req, res) => {
     checkAccount(username, password, false).then(isValid => {
         if (isValid == true) { apologyRender(res, 400, 'The username existed, choose a other one') }
         else {
-            client.db('finance').collection('accounts').insertOne({
-                username: username, password: password, cash: 10000.00
-            }, err => {
-                if (err) throw err;
-                // console.log("1 document inserted");
-                res.redirect('/login');
-            });
+            hashPassword(password).then(hashResult => {
+                database.collection('accounts').insertOne({
+                    username: username, password: hashResult, cash: 10000.00
+                }, err => {
+                    if (err) throw err;
+                    // console.log("1 document inserted");
+                    res.redirect('/login');
+                });
+            })
+
         }
     });
 });
@@ -292,7 +321,7 @@ app.post('/register', (req, res) => {
 app.get('/sell', (_req, res) => {
     if (isValidString(app.get(`username`))) {
         try {
-            client.db('finance').collection('transactions').distinct('symbol', { username: app.get('username') }).then(symbols => {
+            database.collection('transactions').distinct('symbol', { username: app.get('username') }).then(symbols => {
                 var options = '<option>Symbol</option>';
                 for (let i = 0; i < symbols.length; i++) {
                     const symbol = symbols[i];
