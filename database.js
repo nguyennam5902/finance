@@ -1,25 +1,25 @@
-async function getStockPrice(symbol) {
-  const apiKey = 'YOUR_API_KEY'; // replace with your own Alpha Vantage API key
-  // const symbol = 'AAPL'; // the stock symbol you want to get the price for
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
+const bcrypt = require('bcryptjs');
 
+async function comparePasswords(plainPassword, hashedPassword) {
   try {
-    const response = await fetch(url);
-    const data = await response.json();
-    const price = data['Global Quote']['05. price'];
-    return price;
-  } catch (error) {
-    console.error('Error fetching stock price:', error);
+    const match = await bcrypt.compare(plainPassword, hashedPassword);
+    return match;
+  } catch (e) {
+    console.error(`Error while comparing passwords: ${e.message}`);
+    return false;
+  }
+}
+async function hashPassword(password) {
+  try {
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    return hashedPassword;
+  } catch (e) {
+    console.error(`Error while hashing password: ${e.message}`);
+    return null;
   }
 }
 
-
-async function lookup(quote) {
-  const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${quote}&apikey=SOK4MJ8AY4RK33W3`);
-  const data = await response.json();
-  const quote_name = data['Global Quote']['01. symbol'];
-  const price = data['Global Quote']['05. price'];
-  return price;
-}
-
-lookup(`AAPL`).then(price => { console.log(price) });
+hashPassword('hello').then(hashResult=>{
+  console.log(hashResult);
+})

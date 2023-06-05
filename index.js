@@ -15,15 +15,32 @@
 const express = require('express'), app = express();
 const { MongoClient } = require('mongodb');
 const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
+const API_KEY = 'SOK4MJ8AY4RK33W3';
 client.connect();
+
+app.use(express.urlencoded({ extended: true }));
+app.set('view engine', 'ejs');
+app.set('views', 'templates');
+const database= client.db('finance');
+
+/**
+ * Return current date and time in GMT+7
+ * 
+ * @see https://stackoverflow.com/questions/10087819/convert-date-to-another-timezone-in-javascript
+ */
+function getDateTime() {
+    return new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+}
+
 function isBlank(str) {
     return (!str || str.trim().length === 0);
 }
 /**
- * Connect to collection 'accounts' inside database 'finance' with username and password
- * @param username
- * @param password
- * @returns bool: True if the account exists and otherwise
+ * Connect to collection 'accounts' in 'finance' database with username and password
+ * @param username account's username
+ * @param password account's password
+ * @param isNeedCheckPassword flag for checking if need to check both username and password
+ * @returns True if the account exists and otherwise
  */
 async function checkAccount(username, password, isNeedCheckPassword) {
     try {
@@ -38,12 +55,8 @@ async function checkAccount(username, password, isNeedCheckPassword) {
         console.error(err);
     }
 }
-app.use(express.urlencoded({ extended: true }));
 
-app.set('view engine', 'ejs');
-app.set('views', 'templates');
 
-const API_KEY = 'SOK4MJ8AY4RK33W3';
 
 // Get stocks name, company and price
 async function lookupPrice(quote) {
@@ -89,12 +102,11 @@ function isInteger(s) {
 app.set('port', process.env.PORT || 3000);
 
 app.get('/', (_req, res) => {
-    console.log(app.get('username'));
+    // console.log(app.get('username'));
     if (!isValidString(app.get('username'))) {
         res.redirect('/login');
     } else {
         try {
-            const database = client.db('finance');
             const collection = database.collection('transactions');
             const pipeline = [{ $match: { username: app.get(`username`) } }, {
                 $group: {
@@ -115,45 +127,27 @@ app.get('/', (_req, res) => {
                     for (let i = 0; i < rows.length; i++) {
                         const row = rows[i];
                         if (row.totalShares > 0)
-                            body = body + `<tr>
-                                                <td>${row._id}</td>
-                                                <td>${row.company}</td>
-                                                <td>${row.totalShares}</td>
-                                                <td>${row.price + ' $'}</td>
-                                                <td>${row.totalPrice + ' $'}</td>
-                                            </tr>`;
+                            body = body + `<tr><td>${row._id}</td><td>${row.company}</td><td>${row.totalShares}</td><td>${row.price + ' $'}</td><td>${row.totalPrice + ' $'}</td></tr>`;
                         sum = sum + row.price * row.totalShares;
                     }
-                    body = body + `<tr>
-                                        <td><b>CASH</b></td><td></td><td></td><td></td><td>${cashResult.cash.toFixed(2)} $</td>
-                                    </tr>
-                                    <tr><td></td><td></td><td></td><td></td><td><b>${sum} $</b></td></tr>`;
-                    console.log(rows);
-                    res.render('index', {
-                        isLogin: isValidString(app.get('username')),
-                        main: `<table>${header}<tbody>${body}</tbody></table>`
-                    });
+                    body = body + `<tr><td><b>CASH</b></td><td></td><td></td><td></td><td>${cashResult.cash.toFixed(2)} $</td></tr><tr><td></td><td></td><td></td><td></td><td><b>${sum} $</b></td></tr>`;
+                    // console.log(rows);
+                    res.render('index', { isLogin: true, main: `<table>${header}<tbody>${body}</tbody></table>` });
                 });
             });
-        } catch (err) {
-            console.error(err);
-        }
+        } catch (err) { console.error(err); }
     }
 });
 
 
 app.get('/buy', (_req, res) => {
-    if (isValidString(app.get(`username`))) {
-        res.render(`buy`, { isLogin: isValidString(app.get('username')) });
-    }
-    else {
-        res.redirect('/login');
-    }
+    if (isValidString(app.get(`username`))) { res.render(`buy`, { isLogin: true }); }
+    else { res.redirect('/login'); }
 });
 
 app.post('/buy', (_req, res) => {
     const quote = _req.body.symbol, amount = _req.body.shares;
-    console.log(`Quote: ${quote}, amount: ${amount}`);
+    // console.log(`Quote: ${quote}, amount: ${amount}`);
     if (isValidString(quote)) {
         if (isInteger(amount)) {
             const amountInt = parseInt(amount);
@@ -163,11 +157,10 @@ app.post('/buy', (_req, res) => {
                 lookupPrice(quote).then(quoteAndPrice => {
                     if (isValidString(quoteAndPrice[0]) && isValidString(quoteAndPrice[1])) {
                         lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
-                            console.log(`${quoteAndPrice[0]} --> ${companyName}`);
+                            // console.log(`${quoteAndPrice[0]} --> ${companyName}`);
                             const price = parseFloat(quoteAndPrice[1]);
                             const allSum = price * amountInt;
                             try {
-                                const database = client.db('finance');
                                 database.collection('accounts').findOne({
                                     username: app.get(`username`)
                                 }).then(acc => {
@@ -181,14 +174,13 @@ app.post('/buy', (_req, res) => {
                                             company: companyName,
                                             shares: amountInt,
                                             price: price,
-                                            cash: acc.cash - allSum
-                                        }).then(console.log('Document inserted')).catch(err => {
-                                            if (err) { console.log('ERROR'); throw err; }
-                                        });
+                                            cash: acc.cash - allSum,
+                                            transactionTime: getDateTime()
+                                        }).catch(err => { if (err) throw err; });
                                         database.collection('accounts').updateOne({
                                             username: app.get(`username`)
-                                        }, { $set: { cash: acc.cash - allSum } }).then(console.log('Document updated'))
-                                            .catch(err => { if (err) { console.log('ERROR'); throw err; } });
+                                        }, { $set: { cash: acc.cash - allSum } })
+                                            .catch(err => { if (err) throw err; });
                                         res.redirect('/');
                                     }
                                 });
@@ -196,43 +188,30 @@ app.post('/buy', (_req, res) => {
                         }).catch(err => { if (err) throw err; });
                     } else { apologyRender(res, 400, `Quote does not exist`); }
                 });
-
             }
-        } else {
-            apologyRender(res, 400, `Int is needed!`);
-        }
-    } else {
-        apologyRender(res, 400, `Quote is needed`);
-    }
+        } else { apologyRender(res, 400, `Int is needed!`); }
+    } else { apologyRender(res, 400, `Quote is needed`); }
 });
 
 app.get('/history', (_req, res) => {
     if (isValidString(app.get('username'))) {
         try {
-            const header = '<thead><tr><td><b>Symbol</b></td><td><b>Shares</b></td><td><b>Price</b></td></tr></thead>';
+            const header = `<thead><tr><td><b>Symbol</b></td><td><b>Shares</b></td><td><b>Price</b></td><td><b>Transaction's time</b></td></tr></thead>`;
             var body = '';
-            const database = client.db('finance');
             database.collection('transactions').find({ username: app.get('username') }).toArray().then(rows => {
-                console.log(rows);
+                // console.log(rows);
                 database.collection('accounts').findOne({ username: app.get('username') }).then(acc => {
                     var sum = acc.cash;
                     for (let i = 0; i < rows.length; i++) {
                         const row = rows[i];
                         sum = sum + row.price * row.shares;
-                        body = body + `<tr><td>${row.symbol}</td><td>${row.shares}</td><td>${row.price} $</td></tr>`;
+                        body = body + `<tr><td>${row.symbol}</td><td>${row.shares}</td><td>${row.price} $</td><td>${row.transactionTime}</td></tr>`;
                     }
-                    res.render(`history`, {
-                        isLogin: isValidString(app.get('username')),
-                        main: `<table>${header}<tbody>${body}</tbody></table>`
-                    });
+                    res.render(`history`, { isLogin: true, main: `<table>${header}<tbody>${body}</tbody></table>` });
                 });
             });
-        } catch (err) {
-            console.error(err);
-        }
-    } else {
-        res.redirect('/login');
-    }
+        } catch (err) { console.error(err); }
+    } else { res.redirect('/login'); }
 });
 
 // Build path 
@@ -251,11 +230,8 @@ app.post('/login', (req, res) => {
     else {
         checkAccount(username, password, true).then(isValid => {
             if (isValid == true) {
-                app.set('username', username);
-                res.redirect('/');
-            } else {
-                apologyRender(res, 403, 'invalid username and/or password');
-            }
+                app.set('username', username); res.redirect('/');
+            } else { apologyRender(res, 403, 'invalid username and/or password'); }
         });
     }
 });
@@ -295,23 +271,18 @@ app.get('/register', (_req, res) => {
 
 app.post('/register', (req, res) => {
     const username = req.body.username, password = req.body.password, confirmation = req.body.confirmation;
-    if (isBlank(username)) {
-        apologyRender(res, 400, 'must provide username');
-    } else if (isBlank(password)) {
-        apologyRender(res, 400, 'must provide password');
-    } else if (password !== confirmation) {
-        apologyRender(res, 400, 'Password does not match');
-    }
+    if (isBlank(username)) { apologyRender(res, 400, 'must provide username'); }
+    else if (isBlank(password)) { apologyRender(res, 400, 'must provide password'); }
+    else if (password !== confirmation) { apologyRender(res, 400, 'Password does not match'); }
     // console.log(`username: ${username}, password: ${password}, confirmation: ${confirmation}`);
     checkAccount(username, password, false).then(isValid => {
-        if (isValid == true) {
-            apologyRender(res, 400, 'The username existed, choose a other one');
-        } else {
+        if (isValid == true) { apologyRender(res, 400, 'The username existed, choose a other one') }
+        else {
             client.db('finance').collection('accounts').insertOne({
                 username: username, password: password, cash: 10000.00
             }, err => {
                 if (err) throw err;
-                console.log("1 document inserted");
+                // console.log("1 document inserted");
                 res.redirect('/login');
             });
         }
@@ -327,31 +298,24 @@ app.get('/sell', (_req, res) => {
                     const symbol = symbols[i];
                     options = options + `<option>${symbol}</option>`;
                 }
-                console.log(symbols);
+                // console.log(symbols);
                 res.render('sell', { isLogin: true, main: `<form action="/sell" method="post"><div class="form-group"><select name="symbol">${options}</select></div><div class="form-group"><input autocomplete="off" autofocus class="form-control" name="shares" placeholder="Shares" type="number"></div><button class="btn btn-primary" type="submit">Sell</button></form>` });
             });
-        } catch (err) {
-            console.error(err);
-        }
-    } else {
-        res.redirect('login');
-    }
+        } catch (err) { console.error(err); }
+    } else { res.redirect('login'); }
 })
 app.post('/sell', (_req, res) => {
-    const symbol = _req.body.symbol;
-    const amount = _req.body.shares;
+    const symbol = _req.body.symbol, amount = _req.body.shares;
     if (isValidString(symbol)) {
-        console.log('Choice: ' + symbol);
+        // console.log('Choice: ' + symbol);
         if (isInteger(amount)) {
             var amountInt = parseInt(amount);
-            if (amountInt < 0) {
-                apologyRender(res, 400, 'Positive is needed');
-            } else {
+            if (amountInt < 0) { apologyRender(res, 400, 'Positive is needed'); }
+            else {
                 amountInt = amountInt * -1;
                 try {
-                    const database = client.db('finance');
-                    const collection = database.collection('transactions');
-                    collection.aggregate([
+                    const transactions = database.collection('transactions');
+                    transactions.aggregate([
                         { $match: { username: app.get('username'), symbol: symbol } },
                         { $group: { _id: null, totalShares: { $sum: "$shares" } } },
                         { $project: { _id: false, totalShares: true } }
@@ -359,29 +323,27 @@ app.post('/sell', (_req, res) => {
                         if (sum_shares.length == 0) {
                             apologyRender(res, 400, 'Quote does not exist')
                         } else {
-                            if (amountInt * -1 > sum_shares[0].totalShares) {
-                                apologyRender(res, 400, 'Not enough to purchase');
-                            } else {
+                            if (amountInt * -1 > sum_shares[0].totalShares) { apologyRender(res, 400, 'Not enough to purchase'); }
+                            else {
                                 lookupPrice(symbol).then(quoteAndPrice => {
                                     if (isValidString(quoteAndPrice[0]) && isValidString(quoteAndPrice[1])) {
                                         lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
                                             const price = parseFloat(quoteAndPrice[1]);
                                             const allSum = price * amountInt;
-                                            database.collection('accounts').findOne({
-                                                username: app.get('username')
-                                            }).then(acc => {
-                                                console.log('Cash: ' + acc.cash);
+                                            database.collection('accounts').findOne({ username: app.get('username') }).then(acc => {
+                                                // console.log('Cash: ' + acc.cash);
                                                 database.collection('transactions').insertOne({
                                                     username: app.get(`username`),
                                                     symbol: quoteAndPrice[0],
                                                     company: companyName,
                                                     shares: amountInt,
                                                     price: price,
-                                                    cash: acc.cash - allSum
+                                                    cash: acc.cash - allSum,
+                                                    transactionTime: getDateTime()
                                                 }).then(console.log('Document inserted')).catch(err => { if (err) { throw err; } });
                                                 database.collection('accounts').updateOne(
                                                     { username: app.get(`username`) },
-                                                    { $set: { cash: acc.cash - allSum } }).then(console.log('Document updated'))
+                                                    { $set: { cash: acc.cash - allSum } })
                                                     .catch(err => { if (err) { throw err; } });
                                                 res.redirect('/');
                                             });
@@ -394,12 +356,8 @@ app.post('/sell', (_req, res) => {
                 }
                 catch (err) { console.error(err); }
             }
-        } else {
-            apologyRender(res, 400, 'Int is needed');
-        }
-    } else {
-        apologyRender(res, 400, 'Quote is needed');
-    }
+        } else { apologyRender(res, 400, 'Int is needed'); }
+    } else { apologyRender(res, 400, 'Quote is needed'); }
 });
 // Run
 app.listen(app.get('port'), () => {
