@@ -54,7 +54,7 @@ async function lookupPrice(quote) {
     return [quote_name, price];
 }
 /** Given a quote, return its company's name
- * @param quote: 
+ * @param quote
  */
 async function lookupQuoteCompany(quote) {
     const response = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${quote}&apikey=${API_KEY}`);
@@ -341,31 +341,58 @@ app.post('/sell', (_req, res) => {
     const symbol = _req.body.symbol;
     const amount = _req.body.shares;
     if (isValidString(symbol)) {
+        console.log('Choice: ' + symbol);
         if (isInteger(amount)) {
-            const amountInt = parseInt(amount);
+            var amountInt = parseInt(amount);
             if (amountInt < 0) {
                 apologyRender(res, 400, 'Positive is needed');
             } else {
+                amountInt = amountInt * -1;
                 try {
-                    lookupPrice(symbol).then(quoteAndPrice => {
-                        if (isValidString(quoteAndPrice[0]) && isValidString(quoteAndPrice[1])) {
-                            //TODO: #1 SELL
-                            const database= client.db('finance');
-                            // database.collection('transactions');
-                            database.collection('transactions').distinct('symbol', { username: app.get('username') }).then(symbols => {
-                                var options = '<option>Symbol</option>';
-                                for (let i = 0; i < symbols.length; i++) {
-                                    const symbol = symbols[i];
-                                    options = options + `<option>${symbol}</option>`;
-                                }
-                                console.log(symbols);
-                                res.render('sell', { isLogin: true, main: `<form action="/sell" method="post"><div class="form-group"><select name="symbol">${options}</select></div><div class="form-group"><input autocomplete="off" autofocus class="form-control" name="shares" placeholder="Shares" type="number"></div><button class="btn btn-primary" type="submit">Sell</button></form>` });
-                            });
+                    const database = client.db('finance');
+                    const collection = database.collection('transactions');
+                    collection.aggregate([
+                        { $match: { username: app.get('username'), symbol: symbol } },
+                        { $group: { _id: null, totalShares: { $sum: "$shares" } } },
+                        { $project: { _id: false, totalShares: true } }
+                    ]).toArray((err, sum_shares) => {
+                        if (sum_shares.length == 0) {
+                            apologyRender(res, 400, 'Quote does not exist')
                         } else {
-                            apologyRender(res, 400, 'Quote does not exist');
+                            if (amountInt * -1 > sum_shares[0].totalShares) {
+                                apologyRender(res, 400, 'Not enough to purchase');
+                            } else {
+                                lookupPrice(symbol).then(quoteAndPrice => {
+                                    if (isValidString(quoteAndPrice[0]) && isValidString(quoteAndPrice[1])) {
+                                        lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
+                                            const price = parseFloat(quoteAndPrice[1]);
+                                            const allSum = price * amountInt;
+                                            database.collection('accounts').findOne({
+                                                username: app.get('username')
+                                            }).then(acc => {
+                                                console.log('Cash: ' + acc.cash);
+                                                database.collection('transactions').insertOne({
+                                                    username: app.get(`username`),
+                                                    symbol: quoteAndPrice[0],
+                                                    company: companyName,
+                                                    shares: amountInt,
+                                                    price: price,
+                                                    cash: acc.cash - allSum
+                                                }).then(console.log('Document inserted')).catch(err => { if (err) { throw err; } });
+                                                database.collection('accounts').updateOne(
+                                                    { username: app.get(`username`) },
+                                                    { $set: { cash: acc.cash - allSum } }).then(console.log('Document updated'))
+                                                    .catch(err => { if (err) { throw err; } });
+                                                res.redirect('/');
+                                            });
+                                        });
+                                    } else { apologyRender(res, 400, 'Quote does not exist'); }
+                                });
+                            }
                         }
                     });
-                } catch (err) { console.error(err); }
+                }
+                catch (err) { console.error(err); }
             }
         } else {
             apologyRender(res, 400, 'Int is needed');
