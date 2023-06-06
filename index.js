@@ -12,9 +12,12 @@
  */
 
 // Build Node
-const express = require('express'), app = express();
+const express = require('express');
+const { MongoClient } = require('mongodb');
+global.app = express();
+global.client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
+global.database = global.client.db('finance');
 const lib = require("./lib");
-const database = global.client.db('finance');
 
 app.use(express.urlencoded({ extended: true }));
 app.set('view engine', 'ejs');
@@ -230,10 +233,9 @@ app.get('/sell', (_req, res) => {
 app.post('/sell', (_req, res) => {
     const symbol = _req.body.symbol, amount = _req.body.shares;
     if (lib.isValidString(symbol)) {
-        // console.log('Choice: ' + symbol);
         if (lib.isInteger(amount)) {
             var amountInt = parseInt(amount);
-            if (amountInt < 0) { lib.apologyRender(res, 400, 'Positive is needed'); }
+            if (amountInt < 0) { lib.apologyRender(res, 400, 'Positive is needed') }
             else {
                 amountInt = amountInt * -1;
                 try {
@@ -246,7 +248,7 @@ app.post('/sell', (_req, res) => {
                         if (sum_shares.length == 0) {
                             lib.apologyRender(res, 400, 'Quote does not exist')
                         } else {
-                            if (amountInt * -1 > sum_shares[0].totalShares) { lib.apologyRender(res, 400, 'Not enough to purchase'); }
+                            if (amountInt * -1 > sum_shares[0].totalShares) { lib.apologyRender(res, 400, 'Not enough to purchase') }
                             else {
                                 lib.lookupPrice(symbol).then(quoteAndPrice => {
                                     if (lib.isValidString(quoteAndPrice[0]) && lib.isValidString(quoteAndPrice[1])) {
@@ -263,11 +265,11 @@ app.post('/sell', (_req, res) => {
                                                     price: price,
                                                     cash: acc.cash - allSum,
                                                     transactionTime: lib.getDateTime()
-                                                }).then(console.log('Document inserted')).catch(err => { if (err) { throw err; } });
+                                                }).catch(err => { if (err) throw err });
                                                 database.collection('accounts').updateOne(
                                                     { username: app.get(`username`) },
                                                     { $set: { cash: acc.cash - allSum } })
-                                                    .catch(err => { if (err) { throw err; } });
+                                                    .catch(err => { if (err) throw err });
                                                 res.redirect('/');
                                             });
                                         });
