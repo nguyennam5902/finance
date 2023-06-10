@@ -1,5 +1,10 @@
 const bcrypt = require('bcryptjs');
+/**
+ * API keys for look up price, company name
+ * @see https://www.alphavantage.co/support/#api-key
+ */
 const API_KEY = 'SOK4MJ8AY4RK33W3';
+const API_KEYS = ['JXU330JKJNK1JW4L', 'SOK4MJ8AY4RK33W3', 'G0XMX6PP2G038VJK', 'QAPMC1S1CD3YQDCA']
 
 /**
  * Return current date and time in GMT+7
@@ -41,7 +46,7 @@ async function checkAccount(username, password, isNeedCheckPassword) {
  * Compares the plaintext password to saved data in database
  * @param {string} plainPassword 
  * @param {string} hashedPassword 
- * @returns Promise with boolean: True
+ * @returns Promise\<`boolean`\>
  */
 async function comparePasswords(plainPassword, hashedPassword) {
   try {
@@ -114,11 +119,17 @@ function escape(s) {
   return s;
 }
 
+/**
+ * Render message as an apology to user.
+ * @param {Response} res Response for route
+ * @param {number} top Error code
+ * @param {string} bottom Error message
+ */
 function apologyRender(res, top, bottom) {
   bottom = escape(bottom);
   res.render('apology', {
     main: `<img alt=${top} class="border" src="http://memegen.link/custom/${top}/${bottom}.jpg?alt=https://i.imgur.com/CsCgN7Ll.png" title=${bottom}>`,
-    isLogin: isValidString(global.app.get('username')), top: top, bottom: bottom
+    top: top, bottom: bottom
   });
 }
 

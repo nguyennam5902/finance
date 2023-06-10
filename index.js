@@ -12,11 +12,10 @@
  */
 
 // Build Node
-const express = require('express');
+const express = require('express'), app = express();
 const { MongoClient } = require('mongodb');
-global.app = express();
-global.client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
-global.database = global.client.db('finance');
+const client = new MongoClient('mongodb+srv://test:test@database.uzhnq7w.mongodb.net');
+global.database = client.db('finance');
 const lib = require("./lib");
 
 app.use(express.urlencoded({ extended: true }));
@@ -285,7 +284,7 @@ app.post('/sell', (_req, res) => {
     } else { lib.apologyRender(res, 400, 'Quote is needed'); }
 });
 
-global.client.connect();
+client.connect();
 
 // Run
 app.listen(app.get('port'), () => {
