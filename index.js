@@ -53,7 +53,7 @@ app.get('/', (_req, res) => {
                             body = body + `<tr><td>${row._id}</td><td>${row.company}</td><td>${row.totalShares}</td><td>${row.price + ' $'}</td><td>${row.totalPrice.toFixed(2) + ' $'}</td></tr>`;
                         sum = sum + row.price * row.totalShares;
                     }
-                    body = body + `<tr><td><b>CASH</b></td><td></td><td></td><td></td><td>${cashResult.cash.toFixed(2)} $</td></tr><tr><td></td><td></td><td></td><td></td><td><b>${sum} $</b></td></tr>`;
+                    body = body + `<tr><td><b>CASH</b></td><td></td><td></td><td></td><td>${cashResult.cash.toFixed(2)} $</td></tr><tr><td></td><td></td><td></td><td></td><td><b>${sum.toFixed(2)} $</b></td></tr>`;
                     // console.log(rows);
                     res.render('index', { isLogin: true, main: `<table>${header}<tbody>${body}</tbody></table>` });
                 });
@@ -77,10 +77,9 @@ app.post('/buy', (_req, res) => {
                 lib.apologyRender(res, 400, `Positive is needed`);
             } else {
                 lib.lookupPrice(quote).then(quoteAndPrice => {
-                    if (lib.isValidString(quoteAndPrice[0]) && lib.isValidString(quoteAndPrice[1])) {
-                        lib.lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
-                            // console.log(`${quoteAndPrice[0]} --> ${companyName}`);
-                            const price = parseFloat(quoteAndPrice[1]);
+                    if (lib.isValidString(quoteAndPrice.company)) {
+                        lib.lookupQuoteCompany(quoteAndPrice.company).then(companyName => {
+                            const price = quoteAndPrice.price;
                             const allSum = price * amountInt;
                             try {
                                 database.collection('accounts').findOne({
@@ -92,7 +91,7 @@ app.post('/buy', (_req, res) => {
                                     } else {
                                         database.collection('transactions').insertOne({
                                             username: app.get(`username`),
-                                            symbol: quoteAndPrice[0],
+                                            symbol: quoteAndPrice.company,
                                             company: companyName,
                                             shares: amountInt,
                                             price: price,
@@ -149,7 +148,7 @@ app.post('/login', (req, res) => {
         lib.apologyRender(res, 403, 'must provide password');
     // console.log(`username: ${username}, password: ${password}`);
     else {
-        lib.checkAccount(username, password, true).then(isValid => {
+        lib.checkAccountExist(username, password, true).then(isValid => {
             if (isValid) {
                 app.set('username', username); res.redirect('/');
             } else { lib.apologyRender(res, 403, 'invalid username and/or password'); }
@@ -173,16 +172,15 @@ app.get('/quote', (_req, res) => {
 app.post('/quote', (_req, res) => {
     const quote = _req.body.symbol;
     lib.lookupPrice(quote).then(quoteAndPrice => {
-        if (lib.isValidString(quoteAndPrice[0]) && lib.isValidString(quoteAndPrice[1])) {
-            lib.lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
+        console.log(quoteAndPrice);
+        if (lib.isValidString(quoteAndPrice.company)) {
+            lib.lookupQuoteCompany(quoteAndPrice.company).then(companyName => {
                 res.render('quoted', {
                     isLogin: lib.isValidString(app.get(`username`)),
-                    main: `<p>A share of ${companyName} costs ${quoteAndPrice[1]} $.</p>`
+                    main: `<p>A share of ${companyName} costs ${quoteAndPrice.price} $.</p>`
                 });
-            }).catch(err => { if (err) throw err; });
-        } else {
-            lib.apologyRender(res, 400, 'Quote does not exist');
-        }
+            }).catch(err => { if (err) throw err });
+        } else { lib.apologyRender(res, 400, 'Quote does not exist'); }
     });
 })
 
@@ -196,7 +194,7 @@ app.post('/register', (req, res) => {
     else if (lib.isBlank(password)) { lib.apologyRender(res, 400, 'must provide password'); }
     else if (password !== confirmation) { lib.apologyRender(res, 400, 'Password does not match'); }
     // console.log(`username: ${username}, password: ${password}, confirmation: ${confirmation}`);
-    lib.checkAccount(username, password, false).then(isValid => {
+    lib.checkAccountExist(username, password, false).then(isValid => {
         if (isValid == true) { lib.apologyRender(res, 400, 'The username existed, choose a other one') }
         else {
             lib.hashPassword(password).then(hashResult => {
@@ -250,15 +248,15 @@ app.post('/sell', (_req, res) => {
                             if (amountInt * -1 > sum_shares[0].totalShares) { lib.apologyRender(res, 400, 'Not enough to purchase') }
                             else {
                                 lib.lookupPrice(symbol).then(quoteAndPrice => {
-                                    if (lib.isValidString(quoteAndPrice[0]) && lib.isValidString(quoteAndPrice[1])) {
-                                        lib.lookupQuoteCompany(quoteAndPrice[0]).then(companyName => {
-                                            const price = parseFloat(quoteAndPrice[1]);
+                                    if (lib.isValidString(quoteAndPrice.company)) {
+                                        lib.lookupQuoteCompany(quoteAndPrice.company).then(companyName => {
+                                            const price = quoteAndPrice.price;
                                             const allSum = price * amountInt;
                                             database.collection('accounts').findOne({ username: app.get('username') }).then(acc => {
                                                 // console.log('Cash: ' + acc.cash);
                                                 database.collection('transactions').insertOne({
                                                     username: app.get(`username`),
-                                                    symbol: quoteAndPrice[0],
+                                                    symbol: quoteAndPrice.company,
                                                     company: companyName,
                                                     shares: amountInt,
                                                     price: price,
@@ -283,7 +281,9 @@ app.post('/sell', (_req, res) => {
         } else { lib.apologyRender(res, 400, 'Int is needed'); }
     } else { lib.apologyRender(res, 400, 'Quote is needed'); }
 });
-
+app.get('/setting', (_req, res) => {
+// TODO: #2 Make Setting page
+});
 client.connect();
 
 // Run
