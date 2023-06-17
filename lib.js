@@ -1,10 +1,4 @@
 const bcrypt = require('bcryptjs');
-/**
- * API keys for look up price, company name
- * @see https://www.alphavantage.co/support/#api-key
- */
-const API_KEY = 'SOK4MJ8AY4RK33W3';
-const API_KEYS = ['JXU330JKJNK1JW4L', 'SOK4MJ8AY4RK33W3', 'G0XMX6PP2G038VJK', 'QAPMC1S1CD3YQDCA']
 
 /**
  * Return current date and time in GMT+7
@@ -31,7 +25,7 @@ function isBlank(str) {
 * @param {boolean} isNeedCheckPassword flag for checking if need to check both username and password
 * @returns Promise with flag check if the account exists and otherwise
 */
-async function checkAccount(username, password, isNeedCheckPassword) {
+async function checkAccountExist(username, password, isNeedCheckPassword) {
   try {
     const acc = (await global.database.collection('accounts').findOne({ 'username': username }));
     if (acc == null) return false;
@@ -74,15 +68,13 @@ async function hashPassword(password) {
 /** 
  * Given a quote, return quote's name and its price
  * @param {string} quote Quote want to look up
- * @returns Promise with `quote_name` (string) and quote's `price`
- * @see https://www.alphavantage.co/documentation/#latestprice
+ * @returns {Promise} Promise with `quoteName` (string) and quote's `quotePrice`
+ * @see https://cryptocointracker.com/yahoo-finance/yahoo-finance-api
 */
 async function lookupPrice(quote) {
-  const priceURL = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${quote}&apikey=${API_KEY}`);
-  const data = await priceURL.json();
-  const quote_name = data['Global Quote']['01. symbol'];
-  const price = data['Global Quote']['05. price'];
-  return [quote_name, price];
+  const url = await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${quote}?modules=price`);
+  const data = await url.json();
+  return { company: data.quoteSummary.result[0].price.symbol, price: data.quoteSummary.result[0].price.regularMarketPrice.raw };
 }
 
 
@@ -90,12 +82,11 @@ async function lookupPrice(quote) {
  * Given a quote, return its company's name
  * @param {string} quote The name of the quote
  * @returns Promise with quote's company name 
- * @see https://www.alphavantage.co/documentation/#fundamentals
+ * @see https://cryptocointracker.com/yahoo-finance/yahoo-finance-api
  */
 async function lookupQuoteCompany(quote) {
-  const response = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${quote}&apikey=${API_KEY}`);
-  const data = await response.json();
-  return data['Name'];
+  const url = await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${quote}?modules=price`);
+  return (await url.json()).quoteSummary.result[0].price.longName;
 }
 
 /** 
@@ -133,6 +124,11 @@ function apologyRender(res, top, bottom) {
   });
 }
 
+/**
+ * Given a string `s`, check if `s` represent an integer
+ * @param {string} s 
+ * @returns boolean
+ */
 function isInteger(s) { return parseInt(s) === Number(s); }
 
-module.exports = { getDateTime, isBlank, checkAccount, hashPassword, lookupPrice, lookupQuoteCompany, isValidString, apologyRender, isInteger };
+module.exports = { getDateTime, isBlank, checkAccountExist, hashPassword, lookupPrice, lookupQuoteCompany, isValidString, apologyRender, isInteger };
