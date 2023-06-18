@@ -81,7 +81,7 @@ async function lookupPrice(quote) {
 /** 
  * Given a quote, return its company's name
  * @param {string} quote The name of the quote
- * @returns Promise with quote's company name 
+ * @returns {Promise<string>} Promise with quote's company name 
  * @see https://cryptocointracker.com/yahoo-finance/yahoo-finance-api
  */
 async function lookupQuoteCompany(quote) {

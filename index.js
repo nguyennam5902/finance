@@ -114,6 +114,7 @@ app.post('/buy', (_req, res) => {
     } else { lib.apologyRender(res, 400, `Quote is needed`); }
 });
 
+// TODO: #3 Make history show 10 rows only for each page
 app.get('/history', (_req, res) => {
     if (lib.isValidString(app.get('username'))) {
         try {
@@ -227,7 +228,7 @@ app.get('/sell', (_req, res) => {
     } else { res.redirect('login'); }
 });
 
-app.post('/sell', (_req, res) => {
+app.post('/sell', async (_req, res) => {
     const symbol = _req.body.symbol, amount = _req.body.shares;
     if (lib.isValidString(symbol)) {
         if (lib.isInteger(amount)) {
@@ -281,9 +282,93 @@ app.post('/sell', (_req, res) => {
         } else { lib.apologyRender(res, 400, 'Int is needed'); }
     } else { lib.apologyRender(res, 400, 'Quote is needed'); }
 });
+
 app.get('/setting', (_req, res) => {
-// TODO: #2 Make Setting page
+    // TODO: #2 Make Setting page
+    if (lib.isValidString(app.get(`username`))) {
+        client.db('finance').collection('accounts').findOne({ username: app.get(`username`) }).then(acc => {
+            res.render('setting', {
+                isLogin: true, main: `
+            <div class="form-group">
+                <label for="input-field" style="display: inline-block;">Username: ${app.get(`username`)}</label>
+                <a href ="/change-username"><button class="btn btn-primary"> Change username</button></a>
+            </div>
+            <div class="form-group">
+                <label for="input-field" style="display: inline-block;">Password: </label>
+                <a href ="/change-password"><button class="btn btn-primary">Change password</button></a>
+            </div>
+            <div class="form-group">
+                <label for="input-field" style="display: inline-block;">Cash: ${acc.cash} $</label>
+                <a href ="/recharge"><button class="btn btn-primary">Recharge</button></a>
+            </div>` });
+        });
+    } else { res.redirect('login'); }
 });
+
+app.get('/change-username', (_req, res) => {
+    if (lib.isValidString(app.get(`username`))) { res.render('change_username', { isLogin: true }); }
+    else { res.redirect('/login'); }
+});
+
+app.post('/change-username', async (_req, res) => {
+    const newUsername = String(_req.body.username);
+    if (lib.isBlank(newUsername) == false) {
+        if (newUsername != app.get(`username`)) {
+            const database = client.db(`finance`);
+            database.collection(`accounts`).updateOne({ username: app.get(`username`) }, {
+                $set: { username: newUsername }
+            }).then(() => {
+                database.collection(`transactions`).updateMany({ username: app.get(`username`) }, {
+                    $set: { username: newUsername }
+                }).then(() => {
+                    console.log("Transactions updated successfully");
+                    app.set('username', newUsername);
+                    console.log(newUsername);
+                    res.redirect('/');
+                }).catch((err) => { console.log("Error updating transaction:", err); });
+                console.log("Account updated successfully");
+            }).catch((err) => { console.log("Error updating account:", err); });
+        } else { res.redirect('/') }
+    } else { lib.apologyRender(res, 400, `Must provide username`) }
+});
+
+app.get('/change-password', (_req, res) => {
+    if (lib.isValidString(app.get(`username`))) { res.render('change_password', { isLogin: true }); }
+    else { res.redirect('/login'); }
+});
+
+app.post('/change-password', async (_req, res) => {
+    const oldPassword = String(_req.body.old_password), newPassword = String(_req.body.new_password), confirmPassword = String(_req.body.confirm_password);
+    if (lib.isBlank(oldPassword)) {
+        lib.apologyRender(res, 400, 'must provide old password');
+    } else {
+        if (lib.isBlank(newPassword) || lib.isBlank(confirmPassword)) {
+            lib.apologyRender(res, 400, `must provide new password`);
+        } else {
+            if (newPassword == confirmPassword) {
+                const isValid = await lib.checkAccountExist(app.get(`username`), oldPassword, true);
+                if (isValid) {
+                    const database = client.db(`finance`);
+                    database.collection(`accounts`).updateOne({ username: app.get(`username`) }, {
+                        $set: { password: await lib.hashPassword(newPassword) }
+                    }).then(() => {
+                        console.log('Password updated successfully')
+                        res.redirect('/');
+                    });
+                } else { lib.apologyRender(res, 400, 'invalid username and/or password'); }
+            } else { lib.apologyRender(res, 400, 'Password does not match'); }
+        }
+    }
+});
+
+app.get('/recharge', (_req, res) => {
+    if (lib.isValidString(app.get(`username`))) {
+        res.render('recharge', { isLogin: true, main: `` });
+    }
+    else { res.redirect('/login') }
+});
+
+
 client.connect();
 
 // Run
