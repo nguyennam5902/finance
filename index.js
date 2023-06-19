@@ -253,7 +253,12 @@ app.get('/setting', async (_req, res) => {
     // TODO: #2 Make Setting page
     if (lib.isValidString(app.get(`username`))) {
         const acc = await client.db('finance').collection('accounts').findOne({ username: app.get(`username`) });
-        res.render('setting', { isLogin: true, main: `<div class="form-group"><label for="input-field" style="display: inline-block;">Username: ${app.get(`username`)}</label><a href ="/change-username"><button class="btn btn-primary"> Change username</button></a></div><div class="form-group"><label for="input-field" style="display: inline-block;">Password: </label><a href ="/change-password"><button class="btn btn-primary">Change password</button></a></div><div class="form-group"><label for="input-field" style="display: inline-block;">Cash: ${acc.cash} $</label><a href ="/recharge"><button class="btn btn-primary">Recharge</button></a></div>` });
+        res.render('setting', { isLogin: true, main: `<div class="form-group"><label for="input-field" style="display: inline-block;">Username: ${app.get(`username`)}\t\t</label>
+        <a href ="/change-username"><button class="btn btn-primary"> Change username</button></a>
+        </div><div class="form-group"><label for="input-field" style="display: inline-block;">Password:\t\t</label>
+        <a href ="/change-password"><button class="btn btn-primary">Change password</button></a></div>
+        <div class="form-group"><label for="input-field" style="display: inline-block;">Cash: ${acc.cash.toFixed(2)} $\t\t</label>
+        <a href ="/recharge"><button class="btn btn-primary">Recharge</button></a></div>` });
     } else { res.redirect('login'); }
 });
 
@@ -317,9 +322,30 @@ app.post('/change-password', async (_req, res) => {
 
 app.get('/recharge', (_req, res) => {
     if (lib.isValidString(app.get(`username`))) {
-        res.render('recharge', { isLogin: true, main: `` });
+        res.render('recharge', {
+            isLogin: true, main: `
+        <form action="/recharge" method="post">
+            <div class="form-group">
+                <input autocomplete="off" autofocus class="form-control" name="cash" placeholder="Cash" type="number">
+            </div>
+            <button class="btn btn-primary" type="submit">Recharge</button>
+        </form>` });
     }
     else { res.redirect('/login') }
+});
+
+app.post('/recharge', (_req, res) => {
+    const cashAdd = Number(_req.body.cash);
+    if (cashAdd <= 0) {
+        lib.apologyRender(res, 400, 'Positive is needed');
+    } else {
+        console.log(cashAdd);
+        client.db(`finance`).collection('accounts').updateOne(
+            { username: app.get(`username`) },
+            { $inc: { cash: cashAdd } }
+        ).then(() => console.log(`Cash updated`));
+        res.redirect('/');
+    }
 });
 
 
