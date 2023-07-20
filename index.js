@@ -194,7 +194,7 @@ app.get('/sell', async (_req, res) => {
             }
         }];
         var options = '<option>Symbol</option>';
-        await client.db(`finance`).collection('transactions').aggregate(pipeline).toArray().forEach(row => {
+        (await client.db(`finance`).collection('transactions').aggregate(pipeline).toArray()).forEach(row => {
             if (row.totalShares > 0) {
                 console.log(`${row._id} --> ${row.totalShares}`);
                 options = options + `<option>${row._id}</option>`;
